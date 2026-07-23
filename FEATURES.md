@@ -19,36 +19,53 @@ Initial fields:
 
 ### Exercise Library
 
-Status: Planned.
+Status: In progress.
 
 Purpose: Let users quickly find and select lifting exercises.
 
+Current capabilities:
+
+- Browse a curated catalog inside the Session exercise picker.
+- View catalog exercises in a two-column grid.
+- Show licensed RepDB still images in the selector.
+- Add a custom exercise name when the catalog is missing a movement.
+- Use catalog or custom exercises inside the workout logger.
+
 Expected capabilities:
 
-- Browse exercises.
+- Broader exercise list.
 - Search by name.
 - Filter by muscle group.
 - Filter by equipment.
 - View exercise details.
-- Use exercises inside workout logger.
 
 ### Workout Logger
 
-Status: Planned.
+Status: In progress.
 
 Purpose: Make weight lifting logging fast, tactile, and low-typing.
 
+Current capabilities:
+
+- Start an active session from the Session tab.
+- Add exercises as the workout happens.
+- Choose catalog exercises from the selector.
+- Add custom exercises by name.
+- Set weight with a horizontal ruler control.
+- Set reps with a horizontal ruler control.
+- Set number of sets with a horizontal ruler control.
+- Save an exercise to the active session log.
+- Show saved exercises in chronological order.
+- Show saved stats: sets, reps, and weight.
+- Swipe saved exercises to delete them.
+
 Expected capabilities:
 
-- Start workout.
-- Tap to select exercise.
-- Set weight with horizontal scale or slider-style UI.
-- Set reps with horizontal scale or slider-style UI.
-- Set number of sets with similar UI.
-- Save set.
 - Repeat previous values quickly.
 - Finish workout.
 - View workout summary.
+- Persist completed workouts.
+- Support per-set history if needed.
 
 ### Workout History
 
@@ -179,4 +196,3 @@ Potential data:
 - AI workout plan generation.
 - Wearable-first experience.
 - Native Apple Watch app.
-

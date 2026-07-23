@@ -17,7 +17,7 @@ Recommended baseline:
 
 The app should be organized by feature modules, not by generic technical layers alone.
 
-Proposed structure:
+Current structure:
 
 ```text
 apps/mobile/
@@ -25,16 +25,24 @@ apps/mobile/
     _layout.tsx
     index.tsx
     onboarding/
-    workouts/
-    exercises/
-    progress/
-    programs/
-    profile/
+    (tabs)/
+      workouts.tsx
+      exercises.tsx
+      programs.tsx
+      progress.tsx
+      profile.tsx
+  assets/
+    repdb/
+      exercises.json
+      LICENSE-DATA.md
+      ATTRIBUTION.md
+      images/flat/
   src/
     components/
     features/
       onboarding/
       workouts/
+        repdbSessionExercises.ts
       exercises/
       progress/
       programs/
@@ -57,9 +65,27 @@ Captures basic user preferences and goals. Keep the implementation flexible beca
 
 Owns the exercise library, muscle groups, equipment metadata, and exercise selection UI.
 
+Current notes:
+
+- The Session picker uses a curated subset of RepDB free-tier exercise stills.
+- RepDB assets are stored locally under `apps/mobile/assets/repdb`.
+- Catalog images are shown in the exercise selector only.
+- Users can create a custom exercise by entering a name when the catalog does not include the movement.
+
 ### Workouts
 
 Owns active workout logging, workout session state, set entries, exercise order, notes, and completed workout history.
+
+Current Session flow:
+
+- The bottom tab is labeled `Session`.
+- `Start Session` opens an active session log.
+- `Add Exercise` appears after already logged exercises and opens the exercise picker.
+- Saving an exercise appends it to the active session log in chronological order.
+- Logged rows show exercise name, save time, sets, reps, and weight.
+- Saved rows support swipe-to-delete.
+- Sets, reps, and weight use custom ruler controls with a fixed vertical marker.
+- Weight supports 0.5 lb increments, with smaller half-pound ticks, medium 1 lb ticks, and large 5 lb ticks.
 
 ### Programs
 
@@ -105,6 +131,8 @@ Exercise
   secondaryMuscles
   equipment
   instructions
+  image?
+  isCustom?
 
 WorkoutSession
   id
@@ -117,8 +145,11 @@ WorkoutSession
 WorkoutExercise
   id
   exerciseId
+  customExerciseName?
+  exerciseNameSnapshot
   order
   sets
+  savedAt
 
 SetEntry
   id
@@ -137,9 +168,11 @@ ProgramDay
   id
   name
   targetMuscles
-  exercises
+  exerciseIds
   isRestDay
 ```
+
+The current in-memory implementation stores one saved exercise row with aggregate sets/reps/weight. Persistence and per-set entries are still future work.
 
 ## Storage Strategy
 
@@ -166,11 +199,14 @@ The workout logger should avoid spreadsheet-like forms.
 
 Preferred interaction patterns:
 
-- Tap exercise to select.
-- Horizontal scale or slider-like controls for weight.
-- Similar controls for reps and sets.
-- Large touch targets.
-- Fast repeat logging.
+- Start an active session before logging.
+- Tap Add Exercise to choose a movement.
+- Show exercise images in the selector, not on the logging screen.
+- Allow custom exercise names for missing catalog movements.
+- Use horizontal ruler controls with a fixed marker for weight, reps, and sets.
+- Use large touch targets.
+- Log saved exercises in chronological order.
+- Use swipe-to-delete for saved exercise rows.
 - Minimal typing during workouts.
 
 The progress dashboard can borrow the feel of a stock chart:
@@ -189,4 +225,3 @@ Use platform-specific modules only when needed for:
 - Health Connect or Google Fit on Android.
 - Fitbit OAuth/API integration.
 - App store specific permissions.
-

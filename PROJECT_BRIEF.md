@@ -1,10 +1,10 @@
-# Fitness App Project Brief
+# project-orca-9 Project Brief
 
 ## Product Vision
 
-Build a cross-platform mobile fitness app for people who want to track weight lifting without the friction of typing into spreadsheets.
+Build a cross-platform mobile lifting app for people who want to track weight training without the friction of typing into spreadsheets.
 
-The first version focuses on fast, tap-driven workout logging: choose an exercise, set weight with a horizontal scale or slider-style control, set reps and sets with similar controls, and finish a workout with useful progress saved automatically.
+The first version focuses on fast, tap-driven session logging: start a session, add exercises as the workout happens, set weight/reps/sets with thumb-friendly ruler controls, save each exercise into a chronological session log, and keep moving.
 
 Long term, the app should help users manage lifting programs, understand strength progress, maintain realistic streaks that respect rest days, and optionally connect with health and nutrition data sources.
 
@@ -23,11 +23,11 @@ The initial user is a weight lifter who:
 
 Most workout trackers are either too manual, too spreadsheet-like, or too noisy. The app should make the main gym flow feel quick:
 
-1. Tap exercise.
-2. Adjust weight.
-3. Adjust reps.
-4. Adjust sets.
-5. Save and move on.
+1. Start a session.
+2. Add an exercise from the catalog or enter a custom exercise name.
+3. Adjust sets, reps, and weight with ruler-style controls.
+4. Save the exercise into the session log.
+5. Repeat in chronological order until the workout is done.
 
 ## MVP Scope
 
@@ -37,9 +37,12 @@ Included:
 
 - React Native with Expo for iOS and Android.
 - Basic onboarding.
-- Exercise library.
-- Tap-first workout logging.
-- Slider or horizontal scale controls for weight, reps, and sets.
+- Exercise library backed by licensed local still images.
+- Tap-first active session logging.
+- Custom exercise entry when the catalog is missing a movement.
+- Ruler-style controls for weight, reps, and sets.
+- Chronological in-session exercise log.
+- Swipe-to-delete saved exercise rows.
 - Workout history.
 - Basic lifting progress dashboard.
 - Program tracking foundation.
@@ -73,11 +76,11 @@ This may change later as the product becomes clearer.
 - Rest days should not punish streaks.
 - Progress should be motivating without becoming noisy.
 - Start local and simple; add integrations after the core logging loop works.
-- Favor modular features so separate Codex tasks can build pieces independently.
+- Favor modular features so separate work sessions can build pieces independently.
 
 ## Future Chat Context
 
-At the start of future tasks, ask Codex to read:
+At the start of future work sessions, read:
 
 - `PROJECT_BRIEF.md`
 - `ARCHITECTURE.md`

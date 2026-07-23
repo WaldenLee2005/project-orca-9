@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  GestureResponderEvent,
+  Animated,
   Image,
   LayoutChangeEvent,
   PanResponder,
+  TextInput,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,12 +18,24 @@ import {
 } from "../../src/features/workouts/repdbSessionExercises";
 import { useAppTheme } from "../../src/theme/ThemeProvider";
 
-type SessionStep = "start" | "picker" | "logger";
+type SessionStep = "start" | "active" | "picker" | "custom" | "logger";
+
+type SessionLogEntry = {
+  id: string;
+  exercise: SessionExercise;
+  sets: number;
+  reps: number;
+  weight: number;
+  savedAt: string;
+};
 
 export default function WorkoutsScreen() {
   const theme = useAppTheme();
   const [step, setStep] = useState<SessionStep>("start");
+  const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null);
+  const [loggedExercises, setLoggedExercises] = useState<SessionLogEntry[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<SessionExercise | null>(null);
+  const [customExerciseName, setCustomExerciseName] = useState("");
   const [sets, setSets] = useState(3);
   const [reps, setReps] = useState(8);
   const [weight, setWeight] = useState(135);
@@ -34,9 +47,60 @@ export default function WorkoutsScreen() {
     }, {});
   }, []);
 
+  function startSession() {
+    setSessionStartedAt(formatSessionTime(new Date()));
+    setLoggedExercises([]);
+    setSelectedExercise(null);
+    setStep("active");
+  }
+
   function selectExercise(exercise: SessionExercise) {
     setSelectedExercise(exercise);
+    setSets(3);
+    setReps(8);
+    setWeight(135);
     setStep("logger");
+  }
+
+  function createCustomExercise() {
+    const trimmedName = customExerciseName.trim();
+    if (!trimmedName) {
+      return;
+    }
+
+    selectExercise({
+      id: `custom-${Date.now()}`,
+      name: trimmedName,
+      category: "Custom",
+      focus: "Custom exercise",
+      equipment: "Custom",
+      image: sessionExercises[0].image
+    });
+    setCustomExerciseName("");
+  }
+
+  function deleteLoggedExercise(entryId: string) {
+    setLoggedExercises((current) => current.filter((entry) => entry.id !== entryId));
+  }
+
+  function saveExerciseToSession() {
+    if (!selectedExercise) {
+      return;
+    }
+
+    setLoggedExercises((current) => [
+      ...current,
+      {
+        id: `${selectedExercise.id}-${Date.now()}`,
+        exercise: selectedExercise,
+        sets,
+        reps,
+        weight,
+        savedAt: formatSessionTime(new Date())
+      }
+    ]);
+    setSelectedExercise(null);
+    setStep("active");
   }
 
   if (step === "start") {
@@ -45,14 +109,14 @@ export default function WorkoutsScreen() {
         <View style={styles.startHeader}>
           <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>Today</Text>
           <Text style={[styles.startTitle, { color: theme.colors.text }]}>Session</Text>
-          <Text style={[styles.startCopy, { color: theme.colors.secondaryText }]}>
-            Start a lift, pick the movement, and log the working numbers.
+          <Text style={[styles.startCopy, { color: theme.colors.secondaryText }]}> 
+            Start a lift, add exercises as you work, and keep every saved set in order.
           </Text>
         </View>
 
         <Pressable
           accessibilityRole="button"
-          onPress={() => setStep("picker")}
+          onPress={startSession}
           style={({ pressed }) => [
             styles.primaryButton,
             {
@@ -65,14 +129,108 @@ export default function WorkoutsScreen() {
           <Text style={[styles.primaryButtonText, { color: theme.colors.onAccent }]}>Start Session</Text>
         </Pressable>
 
-        <View style={[styles.startStats, { borderColor: theme.colors.border }]}>
-          {["Warm up", "Choose lift", "Log sets"].map((item) => (
+        <View style={[styles.startStats, { borderColor: theme.colors.border }]}> 
+          {["Start", "Add exercise", "Save stats"].map((item) => (
             <View key={item} style={styles.startStatItem}>
               <Text style={[styles.startStatText, { color: theme.colors.secondaryText }]}>{item}</Text>
             </View>
           ))}
         </View>
       </View>
+    );
+  }
+
+  if (step === "active") {
+    return (
+      <ScrollView
+        style={[styles.screen, { backgroundColor: theme.colors.background }]}
+        contentContainerStyle={styles.activeContent}
+      >
+        <View style={styles.activeHeader}>
+          <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>Active Session</Text>
+          <Text style={[styles.activeTitle, { color: theme.colors.text }]}>Session Log</Text>
+          <Text style={[styles.activeMeta, { color: theme.colors.secondaryText }]}> 
+            Started {sessionStartedAt ?? "now"} / {loggedExercises.length} saved
+          </Text>
+        </View>
+
+        <View style={styles.sessionList}>
+          {loggedExercises.map((entry, index) => (
+            <SessionEntryRow
+              entry={entry}
+              index={index}
+              key={entry.id}
+              onDelete={deleteLoggedExercise}
+            />
+          ))}
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setStep("picker")}
+            style={({ pressed }) => [
+              styles.addExerciseButton,
+              {
+                backgroundColor: theme.colors.accent,
+                opacity: pressed ? 0.82 : 1
+              }
+            ]}
+          >
+            <Ionicons name="add" size={20} color={theme.colors.onAccent} />
+            <Text style={[styles.addExerciseText, { color: theme.colors.onAccent }]}>Add Exercise</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  if (step === "custom") {
+    return (
+      <ScrollView
+        style={[styles.screen, { backgroundColor: theme.colors.background }]}
+        contentContainerStyle={styles.loggerContent}
+      >
+        <Pressable accessibilityRole="button" onPress={() => setStep("picker")} style={styles.backButton}>
+          <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
+          <Text style={[styles.backText, { color: theme.colors.text }]}>Exercises</Text>
+        </Pressable>
+
+        <View style={styles.detailHero}>
+          <View style={styles.heroText}>
+            <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>Custom</Text>
+            <Text style={[styles.heroTitle, { color: theme.colors.text }]}>Add Exercise</Text>
+            <Text style={[styles.heroMeta, { color: theme.colors.secondaryText }]}>Name the movement, then log it with the same session sliders.</Text>
+          </View>
+        </View>
+
+        <View style={[styles.customNamePanel, { borderColor: theme.colors.border }]}> 
+          <Text style={[styles.controlLabel, { color: theme.colors.secondaryText }]}>Exercise Name</Text>
+          <TextInput
+            autoCapitalize="words"
+            autoCorrect={false}
+            onChangeText={setCustomExerciseName}
+            placeholder="e.g. Cable Y Raise"
+            placeholderTextColor={theme.colors.mutedText}
+            returnKeyType="done"
+            style={[styles.customNameInput, { color: theme.colors.text, borderColor: theme.colors.border }]}
+            value={customExerciseName}
+          />
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          onPress={createCustomExercise}
+          style={({ pressed }) => [
+            styles.saveButton,
+            {
+              backgroundColor: theme.colors.accent,
+              opacity: pressed ? 0.82 : 1
+            }
+          ]}
+        >
+          <Ionicons name="arrow-forward" size={20} color={theme.colors.onAccent} />
+          <Text style={[styles.saveButtonText, { color: theme.colors.onAccent }]}>Continue</Text>
+        </Pressable>
+      </ScrollView>
     );
   }
 
@@ -88,21 +246,18 @@ export default function WorkoutsScreen() {
         </Pressable>
 
         <View style={styles.detailHero}>
-          <View style={styles.detailImagePanel}>
-            <Image source={selectedExercise.image} resizeMode="contain" style={styles.detailImage} />
-          </View>
           <View style={styles.heroText}>
             <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>{selectedExercise.category}</Text>
             <Text style={[styles.heroTitle, { color: theme.colors.text }]}>{selectedExercise.name}</Text>
-            <Text style={[styles.heroMeta, { color: theme.colors.secondaryText }]}>
+            <Text style={[styles.heroMeta, { color: theme.colors.secondaryText }]}> 
               {selectedExercise.equipment} / {selectedExercise.focus}
             </Text>
           </View>
         </View>
 
         <View style={styles.controls}>
-          <SliderControl label="Sets" value={sets} min={1} max={12} step={1} onChange={setSets} />
-          <SliderControl label="Reps" value={reps} min={1} max={30} step={1} onChange={setReps} />
+          <SliderControl label="Sets" value={sets} min={1} max={12} step={1} majorEvery={5} onChange={setSets} />
+          <SliderControl label="Reps" value={reps} min={1} max={31} step={1} majorEvery={5} onChange={setReps} />
           <SliderControl
             label="Weight"
             value={weight}
@@ -110,13 +265,14 @@ export default function WorkoutsScreen() {
             max={300}
             step={0.5}
             suffix="lb"
-            majorEvery={25}
+            majorEvery={5}
             onChange={setWeight}
           />
         </View>
 
         <Pressable
           accessibilityRole="button"
+          onPress={saveExerciseToSession}
           style={({ pressed }) => [
             styles.saveButton,
             {
@@ -137,10 +293,33 @@ export default function WorkoutsScreen() {
       style={[styles.screen, { backgroundColor: theme.colors.background }]}
       contentContainerStyle={styles.pickerContent}
     >
+      <Pressable accessibilityRole="button" onPress={() => setStep("active")} style={styles.backButton}>
+        <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
+        <Text style={[styles.backText, { color: theme.colors.text }]}>Session</Text>
+      </Pressable>
+
       <View style={styles.pickerHeader}>
-        <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>Session</Text>
+        <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>Add Exercise</Text>
         <Text style={[styles.pickerTitle, { color: theme.colors.text }]}>Choose Exercise</Text>
       </View>
+
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => setStep("custom")}
+        style={({ pressed }) => [
+          styles.customExerciseButton,
+          {
+            borderColor: theme.colors.border,
+            opacity: pressed ? 0.72 : 1
+          }
+        ]}
+      >
+        <Ionicons name="create-outline" size={22} color={theme.colors.text} />
+        <View style={styles.customExerciseTextGroup}>
+          <Text style={[styles.customExerciseTitle, { color: theme.colors.text }]}>Custom Exercise</Text>
+          <Text style={[styles.customExerciseCopy, { color: theme.colors.secondaryText }]}>Add a movement that is not in the catalog.</Text>
+        </View>
+      </Pressable>
 
       {Object.entries(categories).map(([category, exercises]) => (
         <View key={category} style={styles.categorySection}>
@@ -164,7 +343,7 @@ export default function WorkoutsScreen() {
                 </View>
                 <View style={styles.exerciseText}>
                   <Text style={[styles.exerciseName, { color: theme.colors.text }]}>{exercise.name}</Text>
-                  <Text style={[styles.exerciseMeta, { color: theme.colors.secondaryText }]}>
+                  <Text style={[styles.exerciseMeta, { color: theme.colors.secondaryText }]}> 
                     {exercise.equipment}
                   </Text>
                 </View>
@@ -174,6 +353,81 @@ export default function WorkoutsScreen() {
         </View>
       ))}
     </ScrollView>
+  );
+}
+
+function formatSessionTime(date: Date) {
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+type SessionEntryRowProps = {
+  entry: SessionLogEntry;
+  index: number;
+  onDelete: (entryId: string) => void;
+};
+
+function SessionEntryRow({ entry, index, onDelete }: SessionEntryRowProps) {
+  const theme = useAppTheme();
+  const rowTranslateX = useRef(new Animated.Value(0));
+  const deleteRevealWidth = 86;
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+        onPanResponderMove: (_, gesture) => {
+          rowTranslateX.current.setValue(Math.max(-deleteRevealWidth, Math.min(0, gesture.dx)));
+        },
+        onPanResponderRelease: (_, gesture) => {
+          const shouldReveal = gesture.dx < -deleteRevealWidth / 2;
+          Animated.spring(rowTranslateX.current, {
+            friction: 8,
+            tension: 70,
+            toValue: shouldReveal ? -deleteRevealWidth : 0,
+            useNativeDriver: true
+          }).start();
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(rowTranslateX.current, {
+            friction: 8,
+            tension: 70,
+            toValue: 0,
+            useNativeDriver: true
+          }).start();
+        }
+      }),
+    []
+  );
+
+  return (
+    <View style={styles.sessionSwipeShell}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => onDelete(entry.id)}
+        style={[styles.deleteReveal, { backgroundColor: "#FFFFFF" }]}
+      >
+        <Ionicons name="trash-outline" size={22} color={theme.colors.onAccent} />
+      </Pressable>
+      <Animated.View
+        style={[
+          styles.sessionEntry,
+          {
+            borderColor: theme.colors.border,
+            transform: [{ translateX: rowTranslateX.current }]
+          }
+        ]}
+        {...panResponder.panHandlers}
+      >
+        <View style={styles.sessionEntryHeader}>
+          <Text style={[styles.sessionEntryIndex, { color: theme.colors.mutedText }]}>#{index + 1}</Text>
+          <Text style={[styles.sessionEntryTime, { color: theme.colors.mutedText }]}>{entry.savedAt}</Text>
+        </View>
+        <Text style={[styles.sessionEntryName, { color: theme.colors.text }]}>{entry.exercise.name}</Text>
+        <Text style={[styles.sessionEntryStats, { color: theme.colors.secondaryText }]}> 
+          {entry.sets} sets / {entry.reps} reps / {formatSliderValue(entry.weight)} lb
+        </Text>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -191,81 +445,137 @@ type SliderControlProps = {
 function SliderControl({ label, value, min, max, step, suffix, majorEvery, onChange }: SliderControlProps) {
   const theme = useAppTheme();
   const [trackWidth, setTrackWidth] = useState(1);
+  const [draftValue, setDraftValue] = useState(value);
+  const draftValueRef = useRef(value);
+  const valueRef = useRef(value);
+  const dragStartValue = useRef(value);
+  const isDragging = useRef(false);
+  const railTranslateX = useRef(new Animated.Value(0));
   const tickCount = Math.round((max - min) / step);
-  const valueRatio = (value - min) / (max - min);
-  const displayValue = suffix ? `${formatSliderValue(value)} ${suffix}` : formatSliderValue(value);
-  const resolvedMajorEvery = majorEvery ?? Math.max(step, Math.round((max - min) / 5));
+  const tickSpacing = step < 1 ? 9 : 18;
+  const isSubStepRuler = step < 1;
+  const selectedIndex = Math.round((draftValue - min) / step);
+  const displayValue = suffix ? `${formatSliderValue(draftValue)} ${suffix}` : formatSliderValue(draftValue);
+  const resolvedMajorEvery = majorEvery ?? 5;
+  const markerOffset = Math.round(trackWidth / 2 - tickSpacing / 2);
+  const firstIndex = 0;
+  const lastIndex = tickCount;
+  const baseRailX = markerOffset - (selectedIndex - firstIndex) * tickSpacing;
 
   const ticks = useMemo(() => {
-    return Array.from({ length: tickCount + 1 }, (_, index) => {
+
+    return Array.from({ length: lastIndex - firstIndex + 1 }, (_, offset) => {
+      const index = firstIndex + offset;
       const tickValue = min + index * step;
       return {
         index,
-        isMajor: isMajorTick(tickValue, min, resolvedMajorEvery)
+        isMajor: index === 0 || index === tickCount || isMajorTick(tickValue, min, resolvedMajorEvery),
+        isWholeStep: step < 1 && Number.isInteger(tickValue)
       };
     });
-  }, [min, resolvedMajorEvery, step, tickCount]);
+  }, [firstIndex, lastIndex, min, resolvedMajorEvery, step, tickCount]);
 
-  function valueFromLocation(locationX: number) {
-    const rawRatio = Math.min(1, Math.max(0, locationX / trackWidth));
-    const steppedValue = min + Math.round((rawRatio * (max - min)) / step) * step;
+  useEffect(() => {
+    valueRef.current = value;
+    if (!isDragging.current) {
+      draftValueRef.current = value;
+      setDraftValue(value);
+    }
+  }, [value]);
+
+  useEffect(() => {
+    if (isDragging.current) {
+      railTranslateX.current.setValue(baseRailX);
+      return;
+    }
+
+    Animated.timing(railTranslateX.current, {
+      duration: 110,
+      toValue: baseRailX,
+      useNativeDriver: true
+    }).start();
+  }, [baseRailX]);
+
+  function clampToStep(rawValue: number) {
+    const steppedValue = min + Math.round((rawValue - min) / step) * step;
     return Number(Math.min(max, Math.max(min, steppedValue)).toFixed(2));
-  }
-
-  function handleTrackPress(event: GestureResponderEvent) {
-    onChange(valueFromLocation(event.nativeEvent.locationX));
   }
 
   function handleLayout(event: LayoutChangeEvent) {
     setTrackWidth(Math.max(1, event.nativeEvent.layout.width));
   }
 
+  function valueFromDrag(dx: number) {
+    return clampToStep(dragStartValue.current - (dx / tickSpacing) * step);
+  }
+
+  function updateDraftValue(nextValue: number) {
+    draftValueRef.current = nextValue;
+    setDraftValue(nextValue);
+  }
+
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: () => true,
-        onStartShouldSetPanResponder: () => true,
-        onPanResponderGrant: (event) => onChange(valueFromLocation(event.nativeEvent.locationX)),
-        onPanResponderMove: (event) => onChange(valueFromLocation(event.nativeEvent.locationX))
+        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 2,
+        onStartShouldSetPanResponder: () => false,
+        onPanResponderGrant: () => {
+          isDragging.current = true;
+          dragStartValue.current = draftValueRef.current;
+          railTranslateX.current.stopAnimation();
+        },
+        onPanResponderMove: (_, gesture) => {
+          updateDraftValue(valueFromDrag(gesture.dx));
+        },
+        onPanResponderRelease: (_, gesture) => {
+          const nextValue = valueFromDrag(gesture.dx);
+          isDragging.current = false;
+          updateDraftValue(nextValue);
+          onChange(nextValue);
+        },
+        onPanResponderTerminate: () => {
+          isDragging.current = false;
+          updateDraftValue(valueRef.current);
+        }
       }),
-    [max, min, onChange, step, trackWidth]
+    [max, min, onChange, step, tickSpacing]
   );
 
   return (
-    <View style={[styles.controlPanel, { borderColor: theme.colors.border }]}>
+    <View style={[styles.controlPanel, { borderColor: theme.colors.border }]}> 
       <View style={styles.controlHeader}>
         <Text style={[styles.controlLabel, { color: theme.colors.secondaryText }]}>{label}</Text>
         <Text style={[styles.controlValue, { color: theme.colors.text }]}>{displayValue}</Text>
       </View>
 
-      <Pressable accessibilityRole="adjustable" onPress={handleTrackPress} onLayout={handleLayout}>
-        <View style={styles.sliderHitArea} {...panResponder.panHandlers}>
-          <View style={[styles.sliderTrack, { backgroundColor: theme.colors.border }]}>
-            <View style={[styles.sliderFill, { width: `${valueRatio * 100}%`, backgroundColor: theme.colors.accent }]} />
-            <View style={styles.tickRow}>
-              {ticks.map((tick) => (
+      <View accessibilityRole="adjustable" onLayout={handleLayout} style={styles.sliderHitArea} {...panResponder.panHandlers}>
+        <View style={styles.rulerWindow}>
+          <Animated.View
+            style={[
+              styles.tickRow,
+              {
+                transform: [{ translateX: railTranslateX.current }]
+              }
+            ]}
+          >
+            {ticks.map((tick) => (
+              <View key={`${label}-${tick.index}`} style={[styles.tickCell, { width: tickSpacing }]}>
                 <View
-                  key={`${label}-${tick.index}`}
                   style={[
                     styles.tick,
-                    tick.isMajor ? styles.majorTick : styles.minorTick,
-                    { backgroundColor: tick.isMajor ? theme.colors.text : theme.colors.mutedText }
+                    tick.isMajor ? styles.majorTick : tick.isWholeStep ? styles.mediumTick : isSubStepRuler ? styles.subStepTick : styles.minorTick,
+                    {
+                      backgroundColor: theme.colors.secondaryText,
+                      opacity: tick.isMajor ? 1 : 0.62
+                    }
                   ]}
                 />
-              ))}
-            </View>
-            <View
-              style={[
-                styles.sliderThumb,
-                {
-                  backgroundColor: theme.colors.accent,
-                  left: `${valueRatio * 100}%`
-                }
-              ]}
-            />
-          </View>
+              </View>
+            ))}
+          </Animated.View>
+          <View pointerEvents="none" style={[styles.fixedSliderMarkerDot, { backgroundColor: theme.colors.accent }]} />
         </View>
-      </Pressable>
+      </View>
     </View>
   );
 }
@@ -280,6 +590,39 @@ function isMajorTick(value: number, min: number, majorEvery: number) {
 }
 
 const styles = StyleSheet.create({
+  activeContent: {
+    paddingBottom: 118,
+    paddingHorizontal: 20,
+    paddingTop: 72
+  },
+  activeHeader: {
+    gap: 10
+  },
+  activeMeta: {
+    fontSize: 14,
+    fontWeight: "700",
+    lineHeight: 20
+  },
+  activeTitle: {
+    fontSize: 34,
+    fontWeight: "800",
+    lineHeight: 39,
+    textTransform: "uppercase"
+  },
+  addExerciseButton: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 56,
+    paddingHorizontal: 24,
+    paddingVertical: 14
+  },
+  addExerciseText: {
+    fontSize: 14,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
   backButton: {
     alignItems: "center",
     alignSelf: "flex-start",
@@ -326,20 +669,56 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 18
   },
+  deleteReveal: {
+    alignItems: "center",
+    bottom: 0,
+    justifyContent: "center",
+    position: "absolute",
+    right: 0,
+    top: 0,
+    width: 86
+  },
+  customExerciseButton: {
+    alignItems: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 24,
+    minHeight: 72,
+    padding: 14
+  },
+  customExerciseCopy: {
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 16,
+    marginTop: 4
+  },
+  customExerciseTextGroup: {
+    flex: 1
+  },
+  customExerciseTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  customNameInput: {
+    borderWidth: StyleSheet.hairlineWidth,
+    fontSize: 18,
+    fontWeight: "800",
+    marginTop: 12,
+    minHeight: 54,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    textTransform: "uppercase"
+  },
+  customNamePanel: {
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: 18,
+    padding: 18
+  },
   detailHero: {
     gap: 18,
     marginTop: 8
-  },
-  detailImage: {
-    height: "100%",
-    width: "100%"
-  },
-  detailImagePanel: {
-    aspectRatio: 1,
-    backgroundColor: "#FFFFFF",
-    justifyContent: "center",
-    overflow: "hidden",
-    width: "100%"
   },
   eyebrow: {
     fontSize: 11,
@@ -408,11 +787,19 @@ const styles = StyleSheet.create({
     paddingTop: 64
   },
   majorTick: {
-    height: 24,
+    height: 28,
     width: 2
   },
+  mediumTick: {
+    height: 18,
+    width: 1
+  },
   minorTick: {
-    height: 12,
+    height: 16,
+    width: 1
+  },
+  subStepTick: {
+    height: 9,
     width: 1
   },
   pickerContent: {
@@ -421,7 +808,8 @@ const styles = StyleSheet.create({
     paddingTop: 72
   },
   pickerHeader: {
-    gap: 10
+    gap: 10,
+    marginTop: 8
   },
   pickerTitle: {
     fontSize: 34,
@@ -463,30 +851,70 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1
   },
-  sliderFill: {
-    bottom: 0,
-    left: 0,
+  sessionEntry: {
+    backgroundColor: "#000000",
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 96,
+    paddingHorizontal: 14,
+    paddingVertical: 12
+  },
+  sessionEntryHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+
+  sessionEntryIndex: {
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  sessionEntryName: {
+    fontSize: 17,
+    fontWeight: "800",
+    lineHeight: 22,
+    marginTop: 10,
+    textTransform: "uppercase"
+  },
+  sessionEntryStats: {
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+    marginTop: 6
+  },
+  sessionEntryTime: {
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  sessionList: {
+    gap: 12,
+    marginTop: 18
+  },
+  sessionSwipeShell: {
+    overflow: "hidden",
+    position: "relative"
+  },
+  fixedSliderMarkerDot: {
+    borderColor: "#000000",
+    borderRadius: 14,
+    borderWidth: 2,
+    height: 30,
+    left: "50%",
+    marginLeft: -10,
+    marginTop: -15,
     position: "absolute",
-    top: 0
+    top: "50%",
+    width: 20
+  },
+  rulerWindow: {
+    height: 64,
+    overflow: "hidden",
+    position: "relative"
   },
   sliderHitArea: {
     justifyContent: "center",
-    minHeight: 54
-  },
-  sliderThumb: {
-    borderColor: "#000000",
-    borderRadius: 12,
-    borderWidth: 2,
-    height: 24,
-    marginLeft: -12,
-    position: "absolute",
-    top: -10,
-    width: 24
-  },
-  sliderTrack: {
-    height: 4,
-    justifyContent: "center",
-    position: "relative"
+    minHeight: 64
   },
   startContainer: {
     alignItems: "center",
@@ -537,13 +965,14 @@ const styles = StyleSheet.create({
   tick: {
     alignSelf: "center"
   },
+  tickCell: {
+    alignItems: "center",
+    height: 64,
+    justifyContent: "center"
+  },
   tickRow: {
     alignItems: "center",
-    bottom: -10,
     flexDirection: "row",
-    justifyContent: "space-between",
-    left: 0,
-    position: "absolute",
-    right: 0
+    height: 64
   }
 });
