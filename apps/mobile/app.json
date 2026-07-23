@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Project Orca 9",
+    "slug": "project-orca-9",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "projectorca9",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#101820"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
