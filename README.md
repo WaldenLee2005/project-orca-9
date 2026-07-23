@@ -2,7 +2,7 @@
 
 Cross-platform lifting tracker built with React Native and Expo.
 
-The app is focused first on fast weight-lifting logging for people who dislike spreadsheet-style workout tracking. The core experience should let a user tap to select an exercise, adjust weight/reps/sets with thumb-friendly horizontal controls, finish a workout quickly, and see progress over time.
+The app is focused first on fast weight-lifting logging for people who dislike spreadsheet-style workout tracking. The core Session experience lets a user start a workout, add catalog or custom exercises as they train, adjust sets/reps/weight with thumb-friendly ruler controls, and save exercises into a chronological session log.
 
 ## Project Context
 
@@ -34,3 +34,6 @@ npm --prefix apps/mobile run typecheck
 
 The repository/project codename is `project-orca-9`. The eventual public app name can change later.
 
+## Attribution
+
+Exercise data by [RepDB](https://repdb.co/free-exercise-dataset).

@@ -25,7 +25,9 @@ Deliverables:
 - Expo Router configured.
 - Basic theme.
 - Core navigation shell.
-- Placeholder screens for Onboarding, Workouts, Exercises, Programs, Progress, and Profile.
+- Placeholder screens for Onboarding, Session, Exercises, Programs, Progress, and Profile.
+
+Status: Mostly complete.
 
 ## Phase 2: Exercise Library
 
@@ -38,6 +40,15 @@ Deliverables:
 - Search/filter by muscle group and equipment.
 - Exercise detail screen.
 - Exercise picker for workout logging.
+- Custom exercise entry for missing movements.
+
+Status: In progress.
+
+Current progress:
+
+- RepDB free-tier assets and license files are stored locally.
+- Session picker uses a curated two-column exercise grid with images.
+- Custom exercise name entry is supported from the picker.
 
 ## Phase 3: Tap-First Workout Logger
 
@@ -45,14 +56,36 @@ Goal: Build the core experience of logging lifts without spreadsheet-style typin
 
 Deliverables:
 
-- Start workout flow.
-- Select exercise flow.
-- Weight horizontal scale/slider control.
-- Reps control.
-- Sets control.
-- Save set.
+- Start workout/session flow.
+- Active session log.
+- Add exercise flow.
+- Weight horizontal ruler control.
+- Reps ruler control.
+- Sets ruler control.
+- Save exercise to session.
+- Chronological session list.
+- Swipe-to-delete saved exercise.
 - Complete workout.
 - Workout summary.
+
+Status: In progress.
+
+Current progress:
+
+- Session tab starts an active session.
+- Users add catalog or custom exercises.
+- Saving appends exercises to the session log with sets/reps/weight.
+- Ruler controls exist for sets, reps, and weight.
+- Weight supports 0.5 lb increments.
+- Swipe-to-delete is available for saved exercise rows.
+
+Remaining:
+
+- Complete workout action.
+- Workout summary.
+- Persistence.
+- Repeat previous values quickly.
+- Per-set logging if needed.
 
 ## Phase 4: Local Workout History
 
@@ -66,6 +99,8 @@ Deliverables:
 - Edit/delete workout entries.
 - Basic data migration pattern.
 
+Status: Planned.
+
 ## Phase 5: Programs
 
 Goal: Support structured lifting programs.
@@ -78,6 +113,8 @@ Deliverables:
 - Attach workouts to program days.
 - Mark planned rest days.
 
+Status: Planned.
+
 ## Phase 6: Rest-Day-Aware Streaks
 
 Goal: Track consistency without forcing workout check-ins on planned rest days.
@@ -89,6 +126,8 @@ Deliverables:
 - Current streak display.
 - Weekly consistency view.
 - Missed workout handling.
+
+Status: Planned.
 
 ## Phase 7: Progress Dashboard
 
@@ -103,6 +142,8 @@ Deliverables:
 - Personal records.
 - Program adherence.
 
+Status: Planned.
+
 ## Phase 8: Health and Fitness Integrations
 
 Goal: Connect external health data after the core app works.
@@ -115,6 +156,8 @@ Deliverables:
 - Sync design for external data.
 - Initial read-only integration.
 
+Status: Deferred.
+
 ## Phase 9: Nutrition Integrations
 
 Goal: Connect food tracking context after workout tracking is useful.
@@ -125,6 +168,8 @@ Deliverables:
 - Define nutrition data model.
 - Implement import or connection flow.
 - Show nutrition context in progress dashboard.
+
+Status: Deferred.
 
 ## Phase 10: Polish and Release Prep
 
@@ -140,3 +185,4 @@ Deliverables:
 - Privacy policy.
 - Store listing drafts.
 
+Status: Planned.

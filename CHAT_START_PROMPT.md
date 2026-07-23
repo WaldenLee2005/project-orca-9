@@ -1,6 +1,6 @@
 # Future Chat Starting Prompt
 
-Use this prompt at the start of future Codex chats for this project.
+Use this prompt at the start of future project chats.
 
 ```text
 We are building project-orca-9, a cross-platform React Native + Expo app for fast weight-lifting workout tracking.
@@ -15,6 +15,8 @@ Before making changes, read:
 Use those files as the shared project context. Work only on the module I name in this chat unless the requested change clearly requires a small adjacent update.
 
 As you work, update the Markdown context files when decisions, architecture, roadmap items, feature scope, data models, or module status change. Keep updates concise and durable so future chats can understand what changed without reading the whole codebase.
+
+Git actions must not mention codex anywhere. This applies to branch names, commit messages, pull request titles, pull request descriptions, and push-related messages.
 
 For this chat, focus on: [replace with module or task].
 ```
@@ -34,3 +36,12 @@ Update the context docs when any of these change:
 
 Prefer small doc updates near the code change. Do not rewrite all context files unless the project direction has genuinely changed.
 
+## Git Wording Rule
+
+Do not mention codex in any git-visible action or metadata, including:
+
+- Branch names.
+- Commit messages.
+- Pull request titles.
+- Pull request descriptions.
+- Push-related messages.

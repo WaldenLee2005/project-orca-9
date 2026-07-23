@@ -54,3 +54,55 @@ Reason:
 - Apple Health, Fitbit, Health Connect, and food tracker integrations add permission, privacy, and API complexity.
 - The app must first prove its core lifting tracker is useful.
 
+## 2026-07-23: Use RepDB Free-Tier Stills For MVP Exercise Images
+
+Decision: Use the RepDB free-tier exercise dataset and flat WebP stills locally for the MVP exercise selector.
+
+Reason:
+
+- The assets are licensed for commercial in-app use with attribution.
+- Local files keep the app independent of remote image loading.
+- The free set is enough to validate the exercise picker and logging flow.
+
+Tradeoffs:
+
+- The free images are flat stills, not the paid classic/3D animated style.
+- The paid bundle may be purchased later for more polished assets and animations.
+- RepDB attribution must remain visible in the project/app credits.
+
+## 2026-07-23: Session Tab Owns Active Workout Logging
+
+Decision: The primary workout tab is labeled Session and starts an active session log before exercise selection.
+
+Reason:
+
+- This matches how a user works out: start session, add exercises as they happen, save each entry in order.
+- The chronological list makes the current workout visible without waiting for a final summary.
+
+## 2026-07-23: Use Custom Ruler Controls For Sets, Reps, And Weight
+
+Decision: Use custom horizontal ruler controls with a fixed marker instead of text inputs or spreadsheet-like fields.
+
+Reason:
+
+- The interaction is thumb-friendly and fast during a workout.
+- Weight can support 0.5 lb increments while still feeling tactile.
+- The same control pattern works for sets, reps, and weight.
+
+## 2026-07-23: Allow Custom Exercises During Session Logging
+
+Decision: Users can add a custom exercise name from the exercise picker when a movement is not in the catalog.
+
+Reason:
+
+- The catalog will never cover every gym variation at first.
+- A custom name lets users continue logging without breaking session flow.
+
+## 2026-07-23: Git Action Wording Must Not Mention codex
+
+Decision: Branch names, commit messages, pull request titles, pull request descriptions, and push-related messages should not mention codex anywhere.
+
+Reason:
+
+- Repository history and GitHub-visible workflow text should stay product-focused.
+- Automation/tooling details should not leak into git metadata.
