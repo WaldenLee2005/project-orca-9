@@ -85,7 +85,7 @@ Current Session flow:
 - `Add Exercise` appears after already logged exercises and opens the exercise picker.
 - Saving an exercise appends it to the active session log in chronological order.
 - Save Session marks the workout session completed after at least one exercise has been logged.
-- The start screen shows recent completed sessions below Start Session with exercise count, set count, and total volume.
+- The start screen shows recent completed sessions below Start Session with exercise count, set count, and an itemized exercise list.
 - Logged rows show exercise name, save time, sets, reps, and weight.
 - Saved rows support swipe-to-delete.
 - Sets, reps, and weight use custom ruler controls with a fixed vertical marker.
@@ -102,6 +102,15 @@ Owns streak rules, including rest-day-aware streaks. A planned rest day should c
 ### Progress
 
 Owns charts and strength trends, including stock-chart-like visualizations of total lifting progress.
+
+Current notes:
+
+- The Progress tab reads completed workout sessions from the local workout repository.
+- The default Progress tab shows PRs as a running best estimated one-rep max from saved sets.
+- Average Weight tracks `SUM(weight * reps) / SUM(reps)` per completed session as a separate intensity tab.
+- Volume remains available as a secondary workload tab and aggregates `set_entries.weight * set_entries.reps` per completed session.
+- Exercise-specific charts use the saved catalog exercise id when available, or a normalized custom exercise name key for custom lifts.
+- The chart lift picker uses the same local exercise image catalog style as the Session exercise picker, limited to saved lifts plus All Lifts.
 
 ### Integrations
 
@@ -224,6 +233,7 @@ FeedEvent
 The current logger UI captures one saved exercise row with aggregate sets/reps/weight. SQLite persistence expands that aggregate into one `SetEntry` row per set so later per-set editing and progress charts have a durable foundation.
 Active session saves batch those set rows in a single SQLite insert and return the newly saved exercise from the write input, avoiding a full session re-read on every saved exercise. Save Session writes `completed_at` on the session row so future history and progress queries can use completed workouts as their source of truth.
 Starting a session uses cached local profile state when available and does not block on profile lookup because `WorkoutSession.profile_id` is optional.
+Progress strength and volume charts read from the same completed session, workout exercise, and set-entry tables instead of maintaining a separate analytics store.
 
 ## Storage Strategy
 

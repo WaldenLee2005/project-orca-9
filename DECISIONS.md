@@ -214,3 +214,21 @@ Reason:
 - Expo SQLite can stall during browser initialization in the current dev build.
 - The workout loop still needs to be testable on web without pending storage operations.
 - Native remains the production persistence target for normalized workout/session/set tables.
+
+## 2026-07-24: Default Progress To PRs
+
+Decision: The Progress tab should default to PRs, represented as a running best estimated one-rep max, with average weight and volume kept as separate secondary tabs.
+
+Reason:
+
+- Total volume is useful but hard to interpret as strength progress when exercise mix, set count, or deloads change.
+- A running PR line is easier to understand than a fluctuating estimated-strength trend.
+- PR metrics are more motivating and easier to understand than all-lift volume alone.
+- Average weight per session gives a separate intensity view without replacing PRs.
+
+Implementation notes:
+
+- Estimated one-rep max currently uses `weight * (1 + reps / 30)`.
+- All Lifts mode uses each completed session's best estimated one-rep max set.
+- Average Weight uses `SUM(weight * reps) / SUM(reps)` for the selected session scope.
+- Specific lift mode filters by catalog exercise id or normalized custom exercise name.

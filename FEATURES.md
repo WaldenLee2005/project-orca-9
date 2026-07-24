@@ -61,7 +61,7 @@ Current capabilities:
 - Set number of sets with a horizontal ruler control.
 - Save an exercise to the active session log.
 - Save the active session as a completed workout for future history/progress charts.
-- Show recent previous sessions below Start Session with exercise count, set count, and total volume.
+- Show recent previous sessions below Start Session with exercise count, set count, and an itemized exercise list.
 - Show saved exercises in chronological order.
 - Show saved stats: sets, reps, and weight.
 - Swipe saved exercises to delete them locally.
@@ -81,7 +81,7 @@ Purpose: Let users review completed sessions.
 Current capabilities:
 
 - Completed workout sessions are stored in the existing local SQLite workout/session/set tables.
-- The Session tab lists recent completed sessions as a compact history summary.
+- The Session tab lists recent completed sessions as a compact history summary with saved exercises itemized.
 
 Expected capabilities:
 
@@ -126,9 +126,17 @@ Expected capabilities:
 
 ### Progress Dashboard
 
-Status: Planned.
+Status: In progress.
 
 Purpose: Show strength improvement over time.
+
+Current capabilities:
+
+- Show PRs as a running best estimated one-rep max from saved completed sessions.
+- Switch between all-lift trends and exercise-specific trends with a dedicated exercise picker.
+- Show average weight lifted per session as a separate tab.
+- Show volume over time as a secondary workload tab.
+- Filter the chart to 1M, 3M, or All saved data.
 
 Expected capabilities:
 
