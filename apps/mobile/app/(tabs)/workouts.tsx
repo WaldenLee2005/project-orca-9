@@ -16,24 +16,26 @@ import {
   SessionExercise,
   sessionExercises
 } from "../../src/features/workouts/repdbSessionExercises";
+import {
+  addExerciseToWorkoutSession,
+  createWorkoutSession,
+  deleteWorkoutExercise,
+  getActiveWorkoutSession,
+  StoredSessionExercise
+} from "../../src/storage/workoutsRepository";
 import { useAppTheme } from "../../src/theme/ThemeProvider";
 
 type SessionStep = "start" | "active" | "picker" | "custom" | "logger";
 
-type SessionLogEntry = {
-  id: string;
-  exercise: SessionExercise;
-  sets: number;
-  reps: number;
-  weight: number;
-  savedAt: string;
-};
+type SessionLogEntry = StoredSessionExercise;
 
 export default function WorkoutsScreen() {
   const theme = useAppTheme();
   const [step, setStep] = useState<SessionStep>("start");
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null);
   const [loggedExercises, setLoggedExercises] = useState<SessionLogEntry[]>([]);
+  const [storageError, setStorageError] = useState<string | null>(null);
   const [selectedExercise, setSelectedExercise] = useState<SessionExercise | null>(null);
   const [customExerciseName, setCustomExerciseName] = useState("");
   const [sets, setSets] = useState(3);
@@ -47,11 +49,43 @@ export default function WorkoutsScreen() {
     }, {});
   }, []);
 
-  function startSession() {
-    setSessionStartedAt(formatSessionTime(new Date()));
-    setLoggedExercises([]);
-    setSelectedExercise(null);
-    setStep("active");
+  useEffect(() => {
+    let isMounted = true;
+
+    getActiveWorkoutSession()
+      .then((activeSession) => {
+        if (!isMounted || !activeSession) {
+          return;
+        }
+
+        setSessionId(activeSession.id);
+        setSessionStartedAt(activeSession.startedAt);
+        setLoggedExercises(activeSession.exercises);
+        setStep("active");
+      })
+      .catch(() => {
+        if (isMounted) {
+          setStorageError("Could not load your saved session.");
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  async function startSession() {
+    try {
+      const session = await createWorkoutSession();
+      setStorageError(null);
+      setSessionId(session.id);
+      setSessionStartedAt(session.startedAt);
+      setLoggedExercises([]);
+      setSelectedExercise(null);
+      setStep("active");
+    } catch {
+      setStorageError("Could not start a saved session.");
+    }
   }
 
   function selectExercise(exercise: SessionExercise) {
@@ -79,28 +113,43 @@ export default function WorkoutsScreen() {
     setCustomExerciseName("");
   }
 
-  function deleteLoggedExercise(entryId: string) {
+  async function deleteLoggedExercise(entryId: string) {
+    const previousExercises = loggedExercises;
     setLoggedExercises((current) => current.filter((entry) => entry.id !== entryId));
+
+    try {
+      await deleteWorkoutExercise(entryId);
+      setStorageError(null);
+    } catch {
+      setLoggedExercises(previousExercises);
+      setStorageError("Could not delete that exercise.");
+    }
   }
 
-  function saveExerciseToSession() {
-    if (!selectedExercise) {
+  async function saveExerciseToSession() {
+    if (!selectedExercise || !sessionId) {
       return;
     }
 
-    setLoggedExercises((current) => [
-      ...current,
-      {
-        id: `${selectedExercise.id}-${Date.now()}`,
+    try {
+      const storedExercise = await addExerciseToWorkoutSession({
+        sessionId,
         exercise: selectedExercise,
         sets,
         reps,
-        weight,
-        savedAt: formatSessionTime(new Date())
+        weight
+      });
+
+      if (storedExercise) {
+        setLoggedExercises((current) => [...current, storedExercise]);
       }
-    ]);
-    setSelectedExercise(null);
-    setStep("active");
+
+      setStorageError(null);
+      setSelectedExercise(null);
+      setStep("active");
+    } catch {
+      setStorageError("Could not save that exercise.");
+    }
   }
 
   if (step === "start") {
@@ -112,6 +161,7 @@ export default function WorkoutsScreen() {
           <Text style={[styles.startCopy, { color: theme.colors.secondaryText }]}> 
             Start a lift, add exercises as you work, and keep every saved set in order.
           </Text>
+          {storageError ? <Text style={[styles.errorText, { color: theme.colors.accent }]}>{storageError}</Text> : null}
         </View>
 
         <Pressable
@@ -150,8 +200,9 @@ export default function WorkoutsScreen() {
           <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>Active Session</Text>
           <Text style={[styles.activeTitle, { color: theme.colors.text }]}>Session Log</Text>
           <Text style={[styles.activeMeta, { color: theme.colors.secondaryText }]}> 
-            Started {sessionStartedAt ?? "now"} / {loggedExercises.length} saved
+            Started {sessionStartedAt ? formatSessionTime(new Date(sessionStartedAt)) : "now"} / {loggedExercises.length} saved
           </Text>
+          {storageError ? <Text style={[styles.errorText, { color: theme.colors.accent }]}>{storageError}</Text> : null}
         </View>
 
         <View style={styles.sessionList}>
@@ -420,7 +471,9 @@ function SessionEntryRow({ entry, index, onDelete }: SessionEntryRowProps) {
       >
         <View style={styles.sessionEntryHeader}>
           <Text style={[styles.sessionEntryIndex, { color: theme.colors.mutedText }]}>#{index + 1}</Text>
-          <Text style={[styles.sessionEntryTime, { color: theme.colors.mutedText }]}>{entry.savedAt}</Text>
+          <Text style={[styles.sessionEntryTime, { color: theme.colors.mutedText }]}>
+            {formatSessionTime(new Date(entry.savedAt))}
+          </Text>
         </View>
         <Text style={[styles.sessionEntryName, { color: theme.colors.text }]}>{entry.exercise.name}</Text>
         <Text style={[styles.sessionEntryStats, { color: theme.colors.secondaryText }]}> 
@@ -731,6 +784,13 @@ const styles = StyleSheet.create({
     minHeight: 238,
     overflow: "hidden",
     width: "48%"
+  },
+  errorText: {
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18,
+    marginTop: 4,
+    textTransform: "uppercase"
   },
   exerciseGrid: {
     flexDirection: "row",

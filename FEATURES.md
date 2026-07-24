@@ -4,18 +4,22 @@
 
 ### Onboarding
 
-Status: Planned.
+Status: In progress.
 
 Purpose: Capture enough information to personalize the app without slowing the user down.
 
-Initial fields:
+Current fields:
 
 - Display name.
-- Fitness goal.
-- Experience level.
-- Available equipment.
-- Preferred weekly schedule.
-- Optional body metrics.
+- Email and password.
+- Unique handle.
+- Uploaded profile picture.
+- Profile privacy setting.
+
+Current capabilities:
+
+- Save auth id, email, handle, display name, avatar URL, and privacy locally in SQLite.
+- Reload saved profile basics on the Profile tab.
 
 ### Exercise Library
 
@@ -51,13 +55,14 @@ Current capabilities:
 - Add exercises as the workout happens.
 - Choose catalog exercises from the selector.
 - Add custom exercises by name.
+- Save the active session, logged exercises, and set rows locally with SQLite.
 - Set weight with a horizontal ruler control.
 - Set reps with a horizontal ruler control.
 - Set number of sets with a horizontal ruler control.
 - Save an exercise to the active session log.
 - Show saved exercises in chronological order.
 - Show saved stats: sets, reps, and weight.
-- Swipe saved exercises to delete them.
+- Swipe saved exercises to delete them locally.
 
 Expected capabilities:
 
@@ -69,12 +74,13 @@ Expected capabilities:
 
 ### Workout History
 
-Status: Planned.
+Status: Planned; storage foundation started.
 
 Purpose: Let users review completed sessions.
 
 Expected capabilities:
 
+- Reuse the existing local SQLite workout/session/set tables.
 - List completed workouts.
 - View workout details.
 - See exercises, sets, reps, and weights.
@@ -131,6 +137,45 @@ Expected capabilities:
 - Program consistency.
 
 ## Later Features
+
+### Social Feed
+
+Status: In progress; auth/profile foundation started.
+
+Purpose: Let users connect with friends and see opt-in lifting updates.
+
+Expected capabilities:
+
+- Create an account with email/password.
+- Create a social profile with a unique, immutable `@handle`.
+- Set a display name.
+- Upload a profile picture.
+- Keep privacy private by default.
+- Change privacy during onboarding/settings.
+- Send, accept, and remove friend requests.
+- View a friends feed.
+- Share new PR events.
+- Share compact completed-session summaries.
+- Control privacy before workout data becomes friend-visible.
+
+Storage approach:
+
+- Use Supabase for accounts, friendships, and feed events.
+- Keep full workout history local-first in SQLite unless backup/sync is enabled.
+- Publish small derived events instead of raw workout logs by default.
+
+Current capabilities:
+
+- Supabase client setup.
+- Email/password sign up and sign in from onboarding.
+- Email confirmation links can open the app callback and complete sign-in when Supabase returns session tokens.
+- Successful auth navigates immediately; social profile, avatar, and local cache writes run in the background.
+- Local profile stores auth user id, email, handle, display name, avatar URL, and profile visibility.
+- Profile tab can show handle/privacy/avatar and sign out.
+- Signed-in settings allow display name, avatar, and privacy changes without allowing handle changes.
+- Missing social profile rows can be repaired from auth metadata or one-time handle setup in Settings.
+- SQL schema file exists for Supabase social tables and RLS policies.
+- Supabase Storage setup exists for uploaded avatar images.
 
 ### Apple Health Integration
 
@@ -191,7 +236,7 @@ Potential data:
 ## Explicit Non-Goals For MVP
 
 - Full nutrition tracking built from scratch.
-- Social feed.
+- Social feed before the core local logging and history flows are stable.
 - Trainer marketplace.
 - AI workout plan generation.
 - Wearable-first experience.

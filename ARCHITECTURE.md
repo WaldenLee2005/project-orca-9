@@ -11,7 +11,7 @@ Recommended baseline:
 - TypeScript
 - Expo Router for navigation
 - Local-first storage for the MVP
-- Later backend sync with Supabase, Firebase, or another managed backend
+- Later managed backend with Supabase for auth, friends, feed events, and optional sync
 
 ## App Shape
 
@@ -44,12 +44,14 @@ apps/mobile/
       workouts/
         repdbSessionExercises.ts
       exercises/
+      social/
       progress/
       programs/
       streaks/
       integrations/
     data/
     lib/
+      supabase.ts
     storage/
     theme/
     types/
@@ -111,6 +113,28 @@ Possible future integrations:
 - Food trackers
 - Nutrition APIs
 
+### Social
+
+Owns friends, sharing controls, and the activity feed. This requires a managed backend because friend data and feed events must be shared across devices and accounts.
+
+Planned backend shape:
+
+- Supabase Auth for user accounts.
+- Supabase Postgres for public profiles, friendships, and compact feed events.
+- Row Level Security so users can only see allowed friend data.
+- Local SQLite remains the phone source of truth for full workout details.
+- Only opt-in workout summaries and PR/feed events should be published by default.
+
+Current auth/profile shape:
+
+- Email/password auth.
+- Unique lowercase `@handle` values, 3-24 characters using letters, numbers, and underscores; handle changes are not exposed after creation.
+- Display name and uploaded profile picture.
+- Profile visibility defaults to `private`; users can switch to `friends` or `public` during onboarding/settings.
+- Sign-up sends handle/display name/privacy as Supabase Auth metadata so confirmed-email accounts can repair missing social profile rows after first sign-in.
+- Email confirmation redirects to the Expo Router `/auth/callback` route via the app scheme and stores the returned Supabase session.
+- Mobile uses `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; never ship a service-role key.
+
 ## Initial Data Model
 
 Draft entities:
@@ -170,28 +194,65 @@ ProgramDay
   targetMuscles
   exerciseIds
   isRestDay
+
+SocialProfile
+  userId
+  handle
+  displayName
+  avatarUrl?
+  visibility
+
+Friendship
+  id
+  requesterUserId
+  addresseeUserId
+  status
+  createdAt
+
+FeedEvent
+  id
+  userId
+  eventType
+  workoutSessionId?
+  exerciseNameSnapshot?
+  summaryText
+  occurredAt
 ```
 
-The current in-memory implementation stores one saved exercise row with aggregate sets/reps/weight. Persistence and per-set entries are still future work.
+The current logger UI captures one saved exercise row with aggregate sets/reps/weight. SQLite persistence expands that aggregate into one `SetEntry` row per set so later per-set editing and progress charts have a durable foundation.
 
 ## Storage Strategy
 
 For MVP:
 
 - Use local storage first.
-- Prefer a structured local database when workout history becomes non-trivial.
+- Use Expo SQLite as the structured local database for user profiles, workout sessions, workout exercises, and set entries.
+- Keep user-generated workout data normalized and text/numeric only; do not store exercise image blobs in the user database.
 - Keep a repository/service boundary so storage can later be swapped or synced.
+- Run small SQLite compaction after deletes to limit local database growth over time.
 
 Likely options:
 
-- Expo SQLite for structured local workout data.
 - AsyncStorage only for small preferences and onboarding flags.
 
 Later:
 
-- Add account creation and cloud sync.
+- Add Supabase for account creation, friend graph, feed events, and optional cloud sync.
 - Add backup/restore.
 - Add cross-device continuity.
+
+## Backend Strategy
+
+Use Supabase when implementing social features. Do not add a custom server until the app needs secret business logic, paid subscriptions, third-party API aggregation, or background jobs that cannot run safely on the client or in Supabase policies/functions.
+
+Social feed storage should stay compact:
+
+- Publish derived events instead of uploading every raw workout set.
+- Store PRs and session summaries as small rows.
+- Keep detailed workout history in local SQLite unless the user opts into backup/sync.
+- Add privacy settings before publishing any friend-visible workout data.
+
+Supabase setup currently lives in `supabase/social-schema.sql` and `supabase/avatar-storage.sql`; both must be run in the project SQL editor before cloud social profile writes and avatar uploads will work.
 
 ## UI Direction
 

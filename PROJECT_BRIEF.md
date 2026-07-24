@@ -8,6 +8,8 @@ The first version focuses on fast, tap-driven session logging: start a session, 
 
 Long term, the app should help users manage lifting programs, understand strength progress, maintain realistic streaks that respect rest days, and optionally connect with health and nutrition data sources.
 
+The app should eventually include a lightweight social layer where users can follow friends and see opt-in updates such as new PRs, completed sessions, and weekly consistency. This requires accounts and a shared backend, but should not compromise the local-first workout logging flow.
+
 ## Target User
 
 The initial user is a weight lifter who:
@@ -52,7 +54,7 @@ Deferred:
 - Apple Health integration.
 - Fitbit integration.
 - Food tracker integration.
-- Social features.
+- Social features, until the local logging loop and managed backend foundation are ready.
 - AI-generated workout plans.
 - Trainer/client management.
 
