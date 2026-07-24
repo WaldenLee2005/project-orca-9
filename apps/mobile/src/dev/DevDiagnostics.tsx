@@ -1,3 +1,4 @@
+import * as Clipboard from "expo-clipboard";
 import { Component, ErrorInfo, PropsWithChildren, ReactNode, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { isOrcaDevMode } from "./devMode";
@@ -5,6 +6,7 @@ import {
   clearDevDiagnostics,
   DevDiagnosticEvent,
   DevDiagnosticOperation,
+  formatDevDiagnosticsSnapshot,
   getDevDiagnosticsSnapshot,
   isDevOperationStale,
   recordDevEvent,
@@ -79,6 +81,7 @@ function DevDiagnosticsConsole() {
   const [snapshot, setSnapshot] = useState<DevDiagnosticsSnapshot>(() => getDevDiagnosticsSnapshot());
   const [isOpen, setIsOpen] = useState(false);
   const [clock, setClock] = useState(Date.now());
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
 
   useEffect(() => subscribeToDevDiagnostics(setSnapshot), []);
 
@@ -128,6 +131,19 @@ function DevDiagnosticsConsole() {
   const latestFailure = snapshot.events.find((event) => event.level === "error");
   const badgeText = stuckOperations.length > 0 ? `${stuckOperations.length} stuck` : latestFailure ? "error" : "dev";
 
+  async function copyLogs() {
+    const copiedAt = Date.now();
+
+    try {
+      await Clipboard.setStringAsync(formatDevDiagnosticsSnapshot(snapshot, copiedAt));
+      setCopyStatus("Logs copied");
+      recordDevEvent("info", "Copied dev diagnostics logs", `Copied ${snapshot.operations.length} operations and ${snapshot.events.length} events.`);
+    } catch (error) {
+      setCopyStatus("Copy failed");
+      recordDevEvent("error", "Could not copy dev diagnostics logs", error);
+    }
+  }
+
   return (
     <View pointerEvents="box-none" style={styles.overlay}>
       {isOpen ? (
@@ -136,8 +152,12 @@ function DevDiagnosticsConsole() {
             <View>
               <Text style={styles.panelEyebrow}>Dev Mode</Text>
               <Text style={styles.panelTitle}>Diagnostics</Text>
+              {copyStatus ? <Text style={styles.panelStatus}>{copyStatus}</Text> : null}
             </View>
             <View style={styles.panelActions}>
+              <Pressable accessibilityRole="button" onPress={copyLogs} style={styles.iconButton}>
+                <Text style={styles.iconButtonText}>Copy Logs</Text>
+              </Pressable>
               <Pressable accessibilityRole="button" onPress={clearDevDiagnostics} style={styles.iconButton}>
                 <Text style={styles.iconButtonText}>Clear</Text>
               </Pressable>
@@ -309,7 +329,10 @@ const styles = StyleSheet.create({
   },
   panelActions: {
     flexDirection: "row",
-    gap: 8
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "flex-end",
+    maxWidth: 190
   },
   panelEyebrow: {
     color: "#BDBDBD",
@@ -319,7 +342,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase"
   },
   panelHeader: {
-    alignItems: "center",
+    alignItems: "flex-start",
     borderBottomColor: "#3A3A3A",
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
@@ -328,6 +351,13 @@ const styles = StyleSheet.create({
   },
   panelScroll: {
     maxHeight: 448
+  },
+  panelStatus: {
+    color: "#BDBDBD",
+    fontSize: 11,
+    fontWeight: "700",
+    lineHeight: 15,
+    marginTop: 2
   },
   panelTitle: {
     color: "#FFFFFF",

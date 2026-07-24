@@ -149,6 +149,7 @@ Current capabilities:
 - `npm run dev` starts Expo with dev diagnostics enabled.
 - Normal app start scripts do not expose the diagnostics overlay.
 - App-wide overlay shows render/runtime failures, console warnings/errors, and tracked pending operations.
+- Copy Logs copies a complete plain-text diagnostics snapshot to the clipboard.
 - Workout session storage load/save/delete paths report tracked operations for stuck-state debugging.
 
 ### Social Feed

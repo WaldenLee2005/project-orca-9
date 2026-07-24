@@ -230,3 +230,4 @@ Current progress:
 
 - Dev-only diagnostics overlay is available through `npm run dev`.
 - The overlay captures app-wide render/runtime failures, console warnings/errors, and tracked async operations.
+- The overlay can copy the current diagnostics snapshot to the clipboard.
