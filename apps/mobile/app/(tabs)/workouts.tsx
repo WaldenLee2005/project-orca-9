@@ -75,16 +75,21 @@ export default function WorkoutsScreen() {
   }, []);
 
   async function startSession() {
+    const localStartedAt = new Date().toISOString();
+
+    setStorageError(null);
+    setSessionId(null);
+    setSessionStartedAt(localStartedAt);
+    setLoggedExercises([]);
+    setSelectedExercise(null);
+    setStep("active");
+
     try {
       const session = await createWorkoutSession();
-      setStorageError(null);
       setSessionId(session.id);
       setSessionStartedAt(session.startedAt);
-      setLoggedExercises([]);
-      setSelectedExercise(null);
-      setStep("active");
     } catch {
-      setStorageError("Could not start a saved session.");
+      setStorageError("Session is active, but it could not be saved locally yet.");
     }
   }
 
@@ -117,6 +122,10 @@ export default function WorkoutsScreen() {
     const previousExercises = loggedExercises;
     setLoggedExercises((current) => current.filter((entry) => entry.id !== entryId));
 
+    if (entryId.startsWith("local-workout-exercise-")) {
+      return;
+    }
+
     try {
       await deleteWorkoutExercise(entryId);
       setStorageError(null);
@@ -127,7 +136,25 @@ export default function WorkoutsScreen() {
   }
 
   async function saveExerciseToSession() {
-    if (!selectedExercise || !sessionId) {
+    if (!selectedExercise) {
+      return;
+    }
+
+    if (!sessionId) {
+      setLoggedExercises((current) => [
+        ...current,
+        {
+          id: `local-workout-exercise-${Date.now()}`,
+          exercise: selectedExercise,
+          sets,
+          reps,
+          weight,
+          savedAt: new Date().toISOString()
+        }
+      ]);
+      setStorageError("Exercise saved for this app session only. Local storage is still unavailable.");
+      setSelectedExercise(null);
+      setStep("active");
       return;
     }
 
