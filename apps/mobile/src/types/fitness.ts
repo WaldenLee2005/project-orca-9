@@ -2,9 +2,16 @@ export type FitnessGoal = "build_muscle" | "get_stronger" | "lose_fat" | "mainta
 
 export type ExperienceLevel = "beginner" | "intermediate" | "advanced";
 
+export type ProfileVisibility = "private" | "friends" | "public";
+
 export type UserProfile = {
   id: string;
+  authUserId?: string;
+  email?: string;
+  handle?: string;
   displayName: string;
+  avatarUrl?: string;
+  profileVisibility: ProfileVisibility;
   goal: FitnessGoal;
   experienceLevel: ExperienceLevel;
   availableEquipment: string[];

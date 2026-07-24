@@ -106,3 +106,51 @@ Reason:
 
 - Repository history and GitHub-visible workflow text should stay product-focused.
 - Automation/tooling details should not leak into git metadata.
+
+## 2026-07-23: Store MVP User Data Local-First In SQLite
+
+Decision: Store user profiles, workout sessions, workout exercises, and set entries on the user's phone with Expo SQLite before adding cloud sync.
+
+Reason:
+
+- Workout logging must work quickly and offline in the gym.
+- Local-first storage is free and avoids forcing accounts during MVP testing.
+- SQLite is structured enough for workout history and progress queries.
+- A repository boundary keeps future Supabase sync possible without rewriting UI flows.
+
+Storage-size guardrails:
+
+- Store exercise image assets as bundled catalog files, not user database blobs.
+- Store only compact text, ids, timestamps, and numeric set values in SQLite.
+- Run lightweight SQLite compaction after deletes.
+
+Tradeoffs:
+
+- Users do not yet get cross-device continuity or cloud backup.
+- Later sync must handle local IDs, conflict rules, and account ownership.
+
+## 2026-07-23: Use Supabase For Future Social Features
+
+Decision: Use Supabase as the planned managed backend for accounts, friends, feed events, and optional cross-device sync.
+
+Reason:
+
+- Social features require shared cloud state; phone-only SQLite cannot power friend lists or feeds across users.
+- Supabase provides auth, Postgres, Row Level Security, realtime options, and edge functions without running a custom server.
+- The app can keep fast local workout logging while publishing only selected social summaries.
+
+Scope:
+
+- Store public/social profiles, friend requests, friendships, privacy settings, PR events, and completed-session summary events in Supabase.
+- Keep full workout history local-first unless the user opts into backup/sync.
+- Prefer compact derived feed rows over uploading all raw set data for social display.
+- Use email/password auth first.
+- Require unique `@handles`; handles are locked after account creation for stable friend/feed identity.
+- Allow display names and uploaded profile pictures.
+- Default profiles to private, with settings to move to friends-only or public.
+
+Tradeoffs:
+
+- Social accounts introduce privacy, moderation, and data-deletion responsibilities.
+- Supabase schema and RLS policies must be designed before enabling friend-visible data.
+- A custom server may still be needed later for subscriptions, sensitive API integrations, or complex background processing.

@@ -75,6 +75,7 @@ Current progress:
 - Session tab starts an active session.
 - Users add catalog or custom exercises.
 - Saving appends exercises to the session log with sets/reps/weight.
+- Active session data is saved locally in SQLite.
 - Ruler controls exist for sets, reps, and weight.
 - Weight supports 0.5 lb increments.
 - Swipe-to-delete is available for saved exercise rows.
@@ -83,7 +84,6 @@ Remaining:
 
 - Complete workout action.
 - Workout summary.
-- Persistence.
 - Repeat previous values quickly.
 - Per-set logging if needed.
 
@@ -99,7 +99,12 @@ Deliverables:
 - Edit/delete workout entries.
 - Basic data migration pattern.
 
-Status: Planned.
+Status: Planned; storage foundation started.
+
+Current progress:
+
+- SQLite schema and repositories exist for profiles, workout sessions, workout exercises, and set entries.
+- Saved session exercises persist locally as normalized exercise and set rows.
 
 ## Phase 5: Programs
 
@@ -158,7 +163,41 @@ Deliverables:
 
 Status: Deferred.
 
-## Phase 9: Nutrition Integrations
+## Phase 9: Social Backend And Feed
+
+Goal: Add accounts, friends, and a compact opt-in activity feed.
+
+Deliverables:
+
+- Supabase project configuration.
+- Auth client and local session handling.
+- Public/social profile table.
+- Friend request and friendship tables.
+- Privacy settings for shared workout data.
+- Feed event table for PRs and completed workout summaries.
+- Feed tab or feed section.
+- Local-to-cloud publish flow for selected PR/session summary events.
+
+Status: In progress; auth/profile foundation started.
+
+Current progress:
+
+- Supabase client is configured for Expo React Native.
+- Email/password sign up and sign in are wired into onboarding.
+- Onboarding collects unique handle, display name, optional avatar URL, and privacy setting.
+- Signed-in profile settings can edit display name/avatar/privacy while keeping handles immutable.
+- Profile visibility defaults to private.
+- Supabase SQL schema exists for social profiles, friendships, and feed events.
+
+Remaining:
+
+- Run/apply Supabase schema in the hosted project.
+- Friend request UI and repository functions.
+- Feed UI.
+- PR/session-summary publishing from local SQLite.
+- Avatar image upload flow.
+
+## Phase 10: Nutrition Integrations
 
 Goal: Connect food tracking context after workout tracking is useful.
 
@@ -171,7 +210,7 @@ Deliverables:
 
 Status: Deferred.
 
-## Phase 10: Polish and Release Prep
+## Phase 11: Polish and Release Prep
 
 Goal: Prepare for real device testing and eventual release.
 
