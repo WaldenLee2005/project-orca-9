@@ -30,6 +30,7 @@ Most workout trackers are either too manual, too spreadsheet-like, or too noisy.
 3. Adjust sets, reps, and weight with ruler-style controls.
 4. Save the exercise into the session log.
 5. Repeat in chronological order until the workout is done.
+6. Save the session so completed workout data can power history and progress charts.
 
 ## MVP Scope
 

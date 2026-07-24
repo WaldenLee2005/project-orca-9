@@ -5,6 +5,7 @@ import {
   Image,
   LayoutChangeEvent,
   PanResponder,
+  Platform,
   TextInput,
   Pressable,
   ScrollView,
@@ -19,9 +20,12 @@ import {
 import { trackDevOperation } from "../../src/dev/devDiagnosticsStore";
 import {
   addExerciseToWorkoutSession,
+  completeWorkoutSession,
   createWorkoutSession,
   deleteWorkoutExercise,
   getActiveWorkoutSession,
+  getCompletedWorkoutSessions,
+  CompletedWorkoutSession,
   StoredSessionExercise
 } from "../../src/storage/workoutsRepository";
 import { useAppTheme } from "../../src/theme/ThemeProvider";
@@ -30,13 +34,18 @@ type SessionStep = "start" | "active" | "picker" | "custom" | "logger";
 
 type SessionLogEntry = StoredSessionExercise;
 
+const supportsNativeAnimatedDriver = Platform.OS !== "web";
+
 export default function WorkoutsScreen() {
   const theme = useAppTheme();
   const [step, setStep] = useState<SessionStep>("start");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null);
   const [loggedExercises, setLoggedExercises] = useState<SessionLogEntry[]>([]);
+  const [previousSessions, setPreviousSessions] = useState<CompletedWorkoutSession[]>([]);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  const [isSavingSession, setIsSavingSession] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState<SessionExercise | null>(null);
   const [customExerciseName, setCustomExerciseName] = useState("");
   const [sets, setSets] = useState(3);
@@ -52,7 +61,9 @@ export default function WorkoutsScreen() {
 
   useEffect(() => {
     let isMounted = true;
-    const operation = trackDevOperation("Load active workout session", "Checking SQLite for an unfinished session.");
+    const operation = trackDevOperation("Load active workout session", "Checking local workout storage for an unfinished session.");
+
+    loadPreviousSessions();
 
     getActiveWorkoutSession()
       .then((activeSession) => {
@@ -78,17 +89,30 @@ export default function WorkoutsScreen() {
     };
   }, []);
 
+  async function loadPreviousSessions() {
+    const operation = trackDevOperation("Load previous workout sessions", "Checking completed local workout sessions.");
+
+    try {
+      const sessions = await getCompletedWorkoutSessions();
+      setPreviousSessions(sessions);
+      operation.resolve(`${sessions.length} completed sessions loaded.`);
+    } catch (error) {
+      operation.fail(error);
+    }
+  }
+
   async function startSession() {
     const localStartedAt = new Date().toISOString();
 
     setStorageError(null);
+    setSessionNotice(null);
     setSessionId(null);
     setSessionStartedAt(localStartedAt);
     setLoggedExercises([]);
     setSelectedExercise(null);
     setStep("active");
 
-    const operation = trackDevOperation("Create workout session", "Opening a new local SQLite session.");
+    const operation = trackDevOperation("Create workout session", "Opening a new local workout session.");
 
     try {
       const session = await createWorkoutSession();
@@ -126,6 +150,10 @@ export default function WorkoutsScreen() {
     setCustomExerciseName("");
   }
 
+  function isLocalLoggedExercise(entry: SessionLogEntry) {
+    return entry.id.startsWith("local-workout-exercise-");
+  }
+
   async function deleteLoggedExercise(entryId: string) {
     const previousExercises = loggedExercises;
     setLoggedExercises((current) => current.filter((entry) => entry.id !== entryId));
@@ -139,7 +167,7 @@ export default function WorkoutsScreen() {
     try {
       await deleteWorkoutExercise(entryId);
       setStorageError(null);
-      operation.resolve("Deleted from SQLite.");
+      operation.resolve("Deleted from local workout storage.");
     } catch (error) {
       operation.fail(error);
       setLoggedExercises(previousExercises);
@@ -164,6 +192,7 @@ export default function WorkoutsScreen() {
           savedAt: new Date().toISOString()
         }
       ]);
+      setSessionNotice(null);
       setStorageError("Exercise saved for this app session only. Local storage is still unavailable.");
       setSelectedExercise(null);
       setStep("active");
@@ -185,6 +214,7 @@ export default function WorkoutsScreen() {
         setLoggedExercises((current) => [...current, storedExercise]);
       }
 
+      setSessionNotice(null);
       setStorageError(null);
       setSelectedExercise(null);
       setStep("active");
@@ -195,41 +225,121 @@ export default function WorkoutsScreen() {
     }
   }
 
+  async function saveSession() {
+    if (isSavingSession) {
+      return;
+    }
+
+    if (loggedExercises.length === 0) {
+      setSessionNotice(null);
+      setStorageError("Add at least one exercise before saving the session.");
+      return;
+    }
+
+    const operation = trackDevOperation("Complete workout session", `${loggedExercises.length} exercises`);
+    setIsSavingSession(true);
+
+    try {
+      let resolvedSessionId = sessionId;
+
+      if (!resolvedSessionId) {
+        const session = await createWorkoutSession();
+        resolvedSessionId = session.id;
+        setSessionId(session.id);
+        setSessionStartedAt(session.startedAt);
+      }
+
+      for (const entry of loggedExercises.filter(isLocalLoggedExercise)) {
+        await addExerciseToWorkoutSession({
+          sessionId: resolvedSessionId,
+          exercise: entry.exercise,
+          sets: entry.sets,
+          reps: entry.reps,
+          weight: entry.weight
+        });
+      }
+
+      await completeWorkoutSession(resolvedSessionId);
+      setSessionId(null);
+      setSessionStartedAt(null);
+      setLoggedExercises([]);
+      setSelectedExercise(null);
+      setStorageError(null);
+      setSessionNotice("Session saved.");
+      await loadPreviousSessions();
+      setStep("start");
+      operation.resolve(`Completed ${resolvedSessionId}.`);
+    } catch (error) {
+      operation.fail(error);
+      setSessionNotice(null);
+      setStorageError("Could not save the session yet.");
+    } finally {
+      setIsSavingSession(false);
+    }
+  }
+
   if (step === "start") {
     return (
-      <View style={[styles.startContainer, { backgroundColor: theme.colors.background }]}>
-        <View style={styles.startHeader}>
-          <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>Today</Text>
-          <Text style={[styles.startTitle, { color: theme.colors.text }]}>Session</Text>
-          <Text style={[styles.startCopy, { color: theme.colors.secondaryText }]}> 
-            Start a lift, add exercises as you work, and keep every saved set in order.
-          </Text>
-          {storageError ? <Text style={[styles.errorText, { color: theme.colors.accent }]}>{storageError}</Text> : null}
+      <ScrollView
+        style={[styles.screen, { backgroundColor: theme.colors.background }]}
+        contentContainerStyle={styles.startContent}
+      >
+        <View style={styles.startHero}>
+          <View style={styles.startHeader}>
+            <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>Today</Text>
+            <Text style={[styles.startTitle, { color: theme.colors.text }]}>Session</Text>
+            <Text style={[styles.startCopy, { color: theme.colors.secondaryText }]}> 
+              Start a lift, add exercises as you work, and keep every saved set in order.
+            </Text>
+            {sessionNotice ? <Text style={[styles.noticeText, { color: theme.colors.secondaryText }]}>{sessionNotice}</Text> : null}
+            {storageError ? <Text style={[styles.errorText, { color: theme.colors.accent }]}>{storageError}</Text> : null}
+          </View>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={startSession}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              {
+                backgroundColor: theme.colors.accent,
+                opacity: pressed ? 0.82 : 1
+              }
+            ]}
+          >
+            <Ionicons name="play" size={18} color={theme.colors.onAccent} />
+            <Text style={[styles.primaryButtonText, { color: theme.colors.onAccent }]}>Start Session</Text>
+          </Pressable>
+
+          <View style={[styles.startStats, { borderColor: theme.colors.border }]}> 
+            {["Start", "Add exercise", "Save stats"].map((item) => (
+              <View key={item} style={styles.startStatItem}>
+                <Text style={[styles.startStatText, { color: theme.colors.secondaryText }]}>{item}</Text>
+              </View>
+            ))}
+          </View>
         </View>
 
-        <Pressable
-          accessibilityRole="button"
-          onPress={startSession}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            {
-              backgroundColor: theme.colors.accent,
-              opacity: pressed ? 0.82 : 1
-            }
-          ]}
-        >
-          <Ionicons name="play" size={18} color={theme.colors.onAccent} />
-          <Text style={[styles.primaryButtonText, { color: theme.colors.onAccent }]}>Start Session</Text>
-        </Pressable>
+        <View style={styles.previousSessionsSection}>
+          <View style={styles.previousSessionsHeader}>
+            <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>Saved</Text>
+            <Text style={[styles.previousSessionsTitle, { color: theme.colors.text }]}>Previous Sessions</Text>
+          </View>
 
-        <View style={[styles.startStats, { borderColor: theme.colors.border }]}> 
-          {["Start", "Add exercise", "Save stats"].map((item) => (
-            <View key={item} style={styles.startStatItem}>
-              <Text style={[styles.startStatText, { color: theme.colors.secondaryText }]}>{item}</Text>
+          {previousSessions.length === 0 ? (
+            <View style={[styles.emptySessionHistory, { borderColor: theme.colors.border }]}>
+              <Text style={[styles.emptySessionHistoryText, { color: theme.colors.secondaryText }]}>
+                Saved sessions will appear here after your first workout.
+              </Text>
             </View>
-          ))}
+          ) : (
+            <View style={styles.previousSessionList}>
+              {previousSessions.map((session) => (
+                <PreviousSessionRow key={session.id} session={session} />
+              ))}
+            </View>
+          )}
         </View>
-      </View>
+      </ScrollView>
     );
   }
 
@@ -271,6 +381,24 @@ export default function WorkoutsScreen() {
           >
             <Ionicons name="add" size={20} color={theme.colors.onAccent} />
             <Text style={[styles.addExerciseText, { color: theme.colors.onAccent }]}>Add Exercise</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            disabled={isSavingSession}
+            onPress={saveSession}
+            style={({ pressed }) => [
+              styles.saveSessionButton,
+              {
+                borderColor: theme.colors.border,
+                opacity: isSavingSession ? 0.55 : pressed ? 0.78 : 1
+              }
+            ]}
+          >
+            <Ionicons name="save-outline" size={20} color={theme.colors.text} />
+            <Text style={[styles.saveSessionText, { color: theme.colors.text }]}>
+              {isSavingSession ? "Saving Session" : "Save Session"}
+            </Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -454,6 +582,45 @@ function formatSessionTime(date: Date) {
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+function formatSessionDate(date: Date) {
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function formatVolume(value: number) {
+  return Math.round(value).toLocaleString();
+}
+
+type PreviousSessionRowProps = {
+  session: CompletedWorkoutSession;
+};
+
+function PreviousSessionRow({ session }: PreviousSessionRowProps) {
+  const theme = useAppTheme();
+  const completedAt = new Date(session.completedAt);
+  const exerciseLabel = session.exerciseCount === 1 ? "exercise" : "exercises";
+  const setLabel = session.totalSets === 1 ? "set" : "sets";
+  const volumeUnit = Math.round(session.totalVolume) === 1 ? "lb" : "lbs";
+
+  return (
+    <View style={[styles.previousSessionRow, { borderColor: theme.colors.border }]}>
+      <View style={styles.previousSessionMeta}>
+        <Text style={[styles.previousSessionDate, { color: theme.colors.text }]}>
+          {formatSessionDate(completedAt)} / {formatSessionTime(completedAt)}
+        </Text>
+        <Text style={[styles.previousSessionDetails, { color: theme.colors.secondaryText }]}>
+          {session.exerciseCount} {exerciseLabel} / {session.totalSets} {setLabel}
+        </Text>
+      </View>
+      <View style={styles.previousSessionVolume}>
+        <Text style={[styles.previousSessionVolumeValue, { color: theme.colors.text }]}>
+          {formatVolume(session.totalVolume)} {volumeUnit}
+        </Text>
+        <Text style={[styles.previousSessionVolumeLabel, { color: theme.colors.mutedText }]}>Volume</Text>
+      </View>
+    </View>
+  );
+}
+
 type SessionEntryRowProps = {
   entry: SessionLogEntry;
   index: number;
@@ -478,7 +645,7 @@ function SessionEntryRow({ entry, index, onDelete }: SessionEntryRowProps) {
             friction: 8,
             tension: 70,
             toValue: shouldReveal ? -deleteRevealWidth : 0,
-            useNativeDriver: true
+            useNativeDriver: supportsNativeAnimatedDriver
           }).start();
         },
         onPanResponderTerminate: () => {
@@ -486,7 +653,7 @@ function SessionEntryRow({ entry, index, onDelete }: SessionEntryRowProps) {
             friction: 8,
             tension: 70,
             toValue: 0,
-            useNativeDriver: true
+            useNativeDriver: supportsNativeAnimatedDriver
           }).start();
         }
       }),
@@ -588,7 +755,7 @@ function SliderControl({ label, value, min, max, step, suffix, majorEvery, onCha
     Animated.timing(railTranslateX.current, {
       duration: 110,
       toValue: baseRailX,
-      useNativeDriver: true
+      useNativeDriver: supportsNativeAnimatedDriver
     }).start();
   }, [baseRailX]);
 
@@ -905,6 +1072,82 @@ const styles = StyleSheet.create({
     height: 9,
     width: 1
   },
+  noticeText: {
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18,
+    marginTop: 4,
+    textTransform: "uppercase"
+  },
+  previousSessionDate: {
+    fontSize: 16,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  previousSessionDetails: {
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 17,
+    marginTop: 6,
+    textTransform: "uppercase"
+  },
+  previousSessionList: {
+    gap: 10
+  },
+  previousSessionMeta: {
+    flex: 1,
+    paddingRight: 16
+  },
+  previousSessionRow: {
+    alignItems: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 78,
+    paddingHorizontal: 14,
+    paddingVertical: 12
+  },
+  previousSessionsHeader: {
+    gap: 8
+  },
+  previousSessionsSection: {
+    gap: 14,
+    marginTop: 34,
+    width: "100%"
+  },
+  previousSessionsTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    lineHeight: 27,
+    textTransform: "uppercase"
+  },
+  previousSessionVolume: {
+    alignItems: "flex-end"
+  },
+  previousSessionVolumeLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    marginTop: 4,
+    textTransform: "uppercase"
+  },
+  previousSessionVolumeValue: {
+    fontSize: 18,
+    fontWeight: "800"
+  },
+  emptySessionHistory: {
+    alignItems: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 78,
+    justifyContent: "center",
+    padding: 16
+  },
+  emptySessionHistoryText: {
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 18,
+    textAlign: "center",
+    textTransform: "uppercase"
+  },
   pickerContent: {
     paddingBottom: 118,
     paddingHorizontal: 20,
@@ -947,6 +1190,21 @@ const styles = StyleSheet.create({
     paddingVertical: 14
   },
   saveButtonText: {
+    fontSize: 14,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  saveSessionButton: {
+    alignItems: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 56,
+    paddingHorizontal: 24,
+    paddingVertical: 14
+  },
+  saveSessionText: {
     fontSize: 14,
     fontWeight: "800",
     textTransform: "uppercase"
@@ -1019,13 +1277,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 64
   },
-  startContainer: {
-    alignItems: "center",
-    flex: 1,
-    justifyContent: "center",
-    paddingBottom: 112,
-    paddingHorizontal: 24,
+  startContent: {
+    paddingBottom: 118,
+    paddingHorizontal: 20,
     paddingTop: 72
+  },
+  startHero: {
+    alignItems: "center"
   },
   startCopy: {
     fontSize: 15,

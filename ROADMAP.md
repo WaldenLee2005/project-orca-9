@@ -66,6 +66,7 @@ Deliverables:
 - Chronological session list.
 - Swipe-to-delete saved exercise.
 - Complete workout.
+- Save completed sessions for progress/history.
 - Workout summary.
 
 Status: In progress.
@@ -76,13 +77,14 @@ Current progress:
 - Users add catalog or custom exercises.
 - Saving appends exercises to the session log with sets/reps/weight.
 - Active session data is saved locally in SQLite.
+- Save Session completes the workout in SQLite for future progress/history views.
+- The Session start screen lists recent completed sessions.
 - Ruler controls exist for sets, reps, and weight.
 - Weight supports 0.5 lb increments.
 - Swipe-to-delete is available for saved exercise rows.
 
 Remaining:
 
-- Complete workout action.
 - Workout summary.
 - Repeat previous values quickly.
 - Per-set logging if needed.
@@ -105,6 +107,8 @@ Current progress:
 
 - SQLite schema and repositories exist for profiles, workout sessions, workout exercises, and set entries.
 - Saved session exercises persist locally as normalized exercise and set rows.
+- Completed sessions are marked with `completed_at` and can be queried for progress charts.
+- Recent completed sessions appear in the Session tab as a compact history list.
 
 ## Phase 5: Programs
 

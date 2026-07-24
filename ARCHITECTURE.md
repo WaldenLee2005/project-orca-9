@@ -84,6 +84,8 @@ Current Session flow:
 - `Start Session` opens an active session log.
 - `Add Exercise` appears after already logged exercises and opens the exercise picker.
 - Saving an exercise appends it to the active session log in chronological order.
+- Save Session marks the workout session completed after at least one exercise has been logged.
+- The start screen shows recent completed sessions below Start Session with exercise count, set count, and total volume.
 - Logged rows show exercise name, save time, sets, reps, and weight.
 - Saved rows support swipe-to-delete.
 - Sets, reps, and weight use custom ruler controls with a fixed vertical marker.
@@ -220,16 +222,23 @@ FeedEvent
 ```
 
 The current logger UI captures one saved exercise row with aggregate sets/reps/weight. SQLite persistence expands that aggregate into one `SetEntry` row per set so later per-set editing and progress charts have a durable foundation.
+Active session saves batch those set rows in a single SQLite insert and return the newly saved exercise from the write input, avoiding a full session re-read on every saved exercise. Save Session writes `completed_at` on the session row so future history and progress queries can use completed workouts as their source of truth.
+Starting a session uses cached local profile state when available and does not block on profile lookup because `WorkoutSession.profile_id` is optional.
 
 ## Storage Strategy
 
 For MVP:
 
 - Use local storage first.
-- Use Expo SQLite as the structured local database for user profiles, workout sessions, workout exercises, and set entries.
+- Use Expo SQLite as the structured local database for user profiles, workout sessions, workout exercises, and set entries on native builds.
+- Use AsyncStorage-backed workout persistence for the web development build because Expo SQLite can stall during browser initialization.
 - Keep user-generated workout data normalized and text/numeric only; do not store exercise image blobs in the user database.
 - Keep a repository/service boundary so storage can later be swapped or synced.
 - Run small SQLite compaction after deletes to limit local database growth over time.
+- Keep high-frequency workout writes batched and avoid unnecessary post-write reads in the active logging path.
+- Treat `workout_sessions.completed_at` as the boundary between an active session and completed workout history.
+- Treat local profile caching as a convenience layer for auth/social UX, not a required gate before login navigation or session creation.
+- Reset the shared SQLite open promise if database initialization times out, so primary flows can fail visibly and retry instead of waiting forever.
 
 Likely options:
 

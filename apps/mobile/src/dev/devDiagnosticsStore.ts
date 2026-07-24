@@ -15,6 +15,7 @@ export type DevDiagnosticOperation = {
   id: string;
   label: string;
   detail?: string;
+  durationMs?: number;
   status: DevOperationStatus;
   startedAt: string;
   updatedAt: string;
@@ -28,7 +29,9 @@ type DevDiagnosticsSnapshot = {
 type DevDiagnosticsSubscriber = (snapshot: DevDiagnosticsSnapshot) => void;
 
 const MAX_EVENTS = 30;
+const MAX_COMPLETED_OPERATIONS = 20;
 const STUCK_AFTER_MS = 2500;
+const SLOW_OPERATION_MS = 500;
 
 let events: DevDiagnosticEvent[] = [];
 let operations: DevDiagnosticOperation[] = [];
@@ -52,6 +55,15 @@ function getSnapshot(): DevDiagnosticsSnapshot {
 function notify() {
   const snapshot = getSnapshot();
   subscribers.forEach((subscriber) => subscriber(snapshot));
+}
+
+function trimOperations(nextOperations: DevDiagnosticOperation[]) {
+  const pendingOperations = nextOperations.filter((operation) => operation.status === "pending");
+  const completedOperations = nextOperations.filter((operation) => operation.status !== "pending").slice(0, MAX_COMPLETED_OPERATIONS);
+
+  return [...pendingOperations, ...completedOperations].sort(
+    (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
+  );
 }
 
 function formatUnknownDetail(value: unknown): string | undefined {
@@ -97,7 +109,10 @@ export function formatDevDiagnosticsSnapshot(snapshot = getSnapshot(), currentTi
     lines.push("- none");
   } else {
     snapshot.operations.forEach((operation) => {
-      const elapsedMs = Math.max(0, Date.parse(operation.updatedAt) - Date.parse(operation.startedAt));
+      const elapsedMs =
+        operation.status === "pending"
+          ? Math.max(0, currentTime - Date.parse(operation.startedAt))
+          : operation.durationMs ?? Math.max(0, Date.parse(operation.updatedAt) - Date.parse(operation.startedAt));
       const stuckText = isDevOperationStale(operation, currentTime) ? " stuck=true" : "";
       lines.push(
         `- [${operation.status}] ${operation.label} (${elapsedMs}ms${stuckText}) started=${operation.startedAt} updated=${operation.updatedAt}`
@@ -178,17 +193,33 @@ export function trackDevOperation(label: string, detail?: string) {
   notify();
 
   const updateOperation = (status: DevOperationStatus, nextDetail?: string) => {
-    operations = operations.map((operation) =>
-      operation.id === id
-        ? {
-            ...operation,
-            detail: nextDetail ?? operation.detail,
-            status,
-            updatedAt: now()
-          }
-        : operation
+    const currentOperation = operations.find((operation) => operation.id === id);
+
+    if (!currentOperation) {
+      return;
+    }
+
+    const updatedAt = now();
+    const updatedOperation: DevDiagnosticOperation = {
+      ...currentOperation,
+      detail: nextDetail ?? currentOperation.detail,
+      durationMs: status === "pending" ? currentOperation.durationMs : Date.parse(updatedAt) - Date.parse(currentOperation.startedAt),
+      status,
+      updatedAt
+    };
+
+    operations = trimOperations(
+      operations.map((operation) => (operation.id === id ? updatedOperation : operation))
     );
     notify();
+
+    if (status === "resolved" && updatedOperation.durationMs && updatedOperation.durationMs >= SLOW_OPERATION_MS) {
+      recordDevEvent(
+        "info",
+        `${label} took ${updatedOperation.durationMs}ms`,
+        updatedOperation.detail ?? "Operation resolved slowly."
+      );
+    }
   };
 
   return {

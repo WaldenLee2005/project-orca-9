@@ -60,6 +60,8 @@ Current capabilities:
 - Set reps with a horizontal ruler control.
 - Set number of sets with a horizontal ruler control.
 - Save an exercise to the active session log.
+- Save the active session as a completed workout for future history/progress charts.
+- Show recent previous sessions below Start Session with exercise count, set count, and total volume.
 - Show saved exercises in chronological order.
 - Show saved stats: sets, reps, and weight.
 - Swipe saved exercises to delete them locally.
@@ -67,9 +69,7 @@ Current capabilities:
 Expected capabilities:
 
 - Repeat previous values quickly.
-- Finish workout.
 - View workout summary.
-- Persist completed workouts.
 - Support per-set history if needed.
 
 ### Workout History
@@ -78,10 +78,14 @@ Status: Planned; storage foundation started.
 
 Purpose: Let users review completed sessions.
 
+Current capabilities:
+
+- Completed workout sessions are stored in the existing local SQLite workout/session/set tables.
+- The Session tab lists recent completed sessions as a compact history summary.
+
 Expected capabilities:
 
 - Reuse the existing local SQLite workout/session/set tables.
-- List completed workouts.
 - View workout details.
 - See exercises, sets, reps, and weights.
 - Edit mistakes.
@@ -151,6 +155,7 @@ Current capabilities:
 - App-wide overlay shows render/runtime failures, console warnings/errors, and tracked pending operations.
 - Copy Logs copies a complete plain-text diagnostics snapshot to the clipboard.
 - Workout session storage load/save/delete paths report tracked operations for stuck-state debugging.
+- Completed dev operations are capped to recent entries and show elapsed timings; slow resolved operations emit an info signal.
 
 ### Social Feed
 
@@ -184,6 +189,7 @@ Current capabilities:
 - Email/password sign up and sign in from onboarding.
 - Email confirmation links can open the app callback and complete sign-in when Supabase returns session tokens.
 - Successful auth navigates immediately; social profile, avatar, and local cache writes run in the background.
+- Local profile reads are cached in memory so Profile refreshes and workout session creation avoid repeated SQLite lookups.
 - Local profile stores auth user id, email, handle, display name, avatar URL, and profile visibility.
 - Profile tab can show handle/privacy/avatar and sign out.
 - Signed-in settings allow display name, avatar, and privacy changes without allowing handle changes.

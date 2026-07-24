@@ -10,7 +10,7 @@ import {
   upsertSocialProfile
 } from "../../src/features/social/socialProfilesRepository";
 import { withTimeout } from "../../src/lib/withTimeout";
-import { getCurrentUserProfile, upsertUserProfile } from "../../src/storage/profilesRepository";
+import { clearCurrentUserProfileCache, getCurrentUserProfile, upsertUserProfile } from "../../src/storage/profilesRepository";
 import { useAppTheme } from "../../src/theme/ThemeProvider";
 import { UserProfile } from "../../src/types/fitness";
 
@@ -48,6 +48,7 @@ export default function ProfileScreen() {
   async function handleSignOut() {
     try {
       await signOut();
+      clearCurrentUserProfileCache();
       setProfile(null);
       setIsSignedOut(true);
       setStatusText(null);
