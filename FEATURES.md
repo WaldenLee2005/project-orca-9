@@ -138,6 +138,19 @@ Expected capabilities:
 
 ## Later Features
 
+### Developer Diagnostics
+
+Status: Started.
+
+Purpose: Make app failures and stuck development states visible while building.
+
+Current capabilities:
+
+- `npm run dev` starts Expo with dev diagnostics enabled.
+- Normal app start scripts do not expose the diagnostics overlay.
+- App-wide overlay shows render/runtime failures, console warnings/errors, and tracked pending operations.
+- Workout session storage load/save/delete paths report tracked operations for stuck-state debugging.
+
 ### Social Feed
 
 Status: In progress; auth/profile foundation started.

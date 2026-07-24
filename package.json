@@ -1,0 +1,10 @@
+{
+  "name": "project-orca-9",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix apps/mobile run dev --",
+    "mobile": "npm --prefix apps/mobile run start",
+    "typecheck": "npm --prefix apps/mobile run typecheck"
+  }
+}

@@ -16,6 +16,7 @@ import {
   SessionExercise,
   sessionExercises
 } from "../../src/features/workouts/repdbSessionExercises";
+import { trackDevOperation } from "../../src/dev/devDiagnosticsStore";
 import {
   addExerciseToWorkoutSession,
   createWorkoutSession,
@@ -51,9 +52,11 @@ export default function WorkoutsScreen() {
 
   useEffect(() => {
     let isMounted = true;
+    const operation = trackDevOperation("Load active workout session", "Checking SQLite for an unfinished session.");
 
     getActiveWorkoutSession()
       .then((activeSession) => {
+        operation.resolve(activeSession ? "Restored an active session." : "No active session found.");
         if (!isMounted || !activeSession) {
           return;
         }
@@ -63,7 +66,8 @@ export default function WorkoutsScreen() {
         setLoggedExercises(activeSession.exercises);
         setStep("active");
       })
-      .catch(() => {
+      .catch((error) => {
+        operation.fail(error);
         if (isMounted) {
           setStorageError("Could not load your saved session.");
         }
@@ -84,11 +88,15 @@ export default function WorkoutsScreen() {
     setSelectedExercise(null);
     setStep("active");
 
+    const operation = trackDevOperation("Create workout session", "Opening a new local SQLite session.");
+
     try {
       const session = await createWorkoutSession();
       setSessionId(session.id);
       setSessionStartedAt(session.startedAt);
-    } catch {
+      operation.resolve(`Created ${session.id}.`);
+    } catch (error) {
+      operation.fail(error);
       setStorageError("Session is active, but it could not be saved locally yet.");
     }
   }
@@ -126,10 +134,14 @@ export default function WorkoutsScreen() {
       return;
     }
 
+    const operation = trackDevOperation("Delete logged exercise", entryId);
+
     try {
       await deleteWorkoutExercise(entryId);
       setStorageError(null);
-    } catch {
+      operation.resolve("Deleted from SQLite.");
+    } catch (error) {
+      operation.fail(error);
       setLoggedExercises(previousExercises);
       setStorageError("Could not delete that exercise.");
     }
@@ -158,6 +170,8 @@ export default function WorkoutsScreen() {
       return;
     }
 
+    const operation = trackDevOperation("Save exercise to session", selectedExercise.name);
+
     try {
       const storedExercise = await addExerciseToWorkoutSession({
         sessionId,
@@ -174,7 +188,9 @@ export default function WorkoutsScreen() {
       setStorageError(null);
       setSelectedExercise(null);
       setStep("active");
-    } catch {
+      operation.resolve(storedExercise ? `Saved ${storedExercise.id}.` : "Repository returned no exercise.");
+    } catch (error) {
+      operation.fail(error);
       setStorageError("Could not save that exercise.");
     }
   }
