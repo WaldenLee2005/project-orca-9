@@ -224,4 +224,9 @@ Deliverables:
 - Privacy policy.
 - Store listing drafts.
 
-Status: Planned.
+Status: Planned; dev diagnostics started.
+
+Current progress:
+
+- Dev-only diagnostics overlay is available through `npm run dev`.
+- The overlay captures app-wide render/runtime failures, console warnings/errors, and tracked async operations.

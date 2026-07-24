@@ -154,3 +154,13 @@ Tradeoffs:
 - Social accounts introduce privacy, moderation, and data-deletion responsibilities.
 - Supabase schema and RLS policies must be designed before enabling friend-visible data.
 - A custom server may still be needed later for subscriptions, sensitive API integrations, or complex background processing.
+
+## 2026-07-24: Gate App Diagnostics Behind npm run dev
+
+Decision: Development diagnostics are only enabled by `npm run dev`, which sets `EXPO_PUBLIC_ORCA_DEV_MODE=1` for the Expo process.
+
+Reason:
+
+- Failures and stuck async work should be visible while building without leaking a debug surface into ordinary app starts.
+- The diagnostics layer should be app-wide so errors can be inspected from any screen.
+- Feature modules can opt into richer stuck-state reporting by wrapping important async work with `trackDevOperation`.
