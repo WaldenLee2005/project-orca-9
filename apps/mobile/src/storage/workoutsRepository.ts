@@ -57,7 +57,7 @@ export async function getActiveWorkoutSession() {
 
 export async function createWorkoutSession() {
   const database = await getDatabase();
-  const profile = await getCurrentUserProfile();
+  const profile = await getCurrentUserProfile().catch(() => null);
   const now = new Date().toISOString();
   const id = createLocalId("session");
 
