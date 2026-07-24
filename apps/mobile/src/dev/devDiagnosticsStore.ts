@@ -83,6 +83,46 @@ export function getDevDiagnosticsSnapshot() {
   return getSnapshot();
 }
 
+export function formatDevDiagnosticsSnapshot(snapshot = getSnapshot(), currentTime = Date.now()) {
+  const lines = [
+    "Project Orca 9 Dev Diagnostics",
+    `Copied At: ${new Date(currentTime).toISOString()}`,
+    `Events: ${snapshot.events.length}`,
+    `Operations: ${snapshot.operations.length}`,
+    ""
+  ];
+
+  lines.push("Operations");
+  if (snapshot.operations.length === 0) {
+    lines.push("- none");
+  } else {
+    snapshot.operations.forEach((operation) => {
+      const elapsedMs = Math.max(0, Date.parse(operation.updatedAt) - Date.parse(operation.startedAt));
+      const stuckText = isDevOperationStale(operation, currentTime) ? " stuck=true" : "";
+      lines.push(
+        `- [${operation.status}] ${operation.label} (${elapsedMs}ms${stuckText}) started=${operation.startedAt} updated=${operation.updatedAt}`
+      );
+      if (operation.detail) {
+        lines.push(`  detail: ${operation.detail}`);
+      }
+    });
+  }
+
+  lines.push("", "Events");
+  if (snapshot.events.length === 0) {
+    lines.push("- none");
+  } else {
+    snapshot.events.forEach((event) => {
+      lines.push(`- [${event.level}] ${event.createdAt} ${event.message}`);
+      if (event.detail) {
+        lines.push(`  detail: ${event.detail}`);
+      }
+    });
+  }
+
+  return lines.join("\n");
+}
+
 export function clearDevDiagnostics() {
   if (!isOrcaDevMode) {
     return;

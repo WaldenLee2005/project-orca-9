@@ -262,7 +262,7 @@ The workout logger should avoid spreadsheet-like forms.
 
 Dev-only diagnostics are enabled by `npm run dev`, which sets `EXPO_PUBLIC_ORCA_DEV_MODE=1` before starting Expo. Normal `start`, `ios`, `android`, and `web` scripts do not expose the diagnostics UI.
 
-The app root mounts `DevDiagnosticsRoot` only when that flag is present. It provides an app-wide overlay for render/runtime failures, console warnings/errors, and tracked async operations that may be stuck. Feature code can use `trackDevOperation` for storage, auth, sync, or other slow startup paths that need visible debugging in development.
+The app root mounts `DevDiagnosticsRoot` only when that flag is present. It provides an app-wide overlay for render/runtime failures, console warnings/errors, and tracked async operations that may be stuck. The overlay can copy a complete plain-text diagnostics snapshot for easier debugging. Feature code can use `trackDevOperation` for storage, auth, sync, or other slow startup paths that need visible debugging in development.
 
 Preferred interaction patterns:
 
