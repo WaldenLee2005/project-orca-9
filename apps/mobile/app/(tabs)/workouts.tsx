@@ -586,9 +586,6 @@ function formatSessionDate(date: Date) {
   return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-function formatVolume(value: number) {
-  return Math.round(value).toLocaleString();
-}
 
 type PreviousSessionRowProps = {
   session: CompletedWorkoutSession;
@@ -599,7 +596,6 @@ function PreviousSessionRow({ session }: PreviousSessionRowProps) {
   const completedAt = new Date(session.completedAt);
   const exerciseLabel = session.exerciseCount === 1 ? "exercise" : "exercises";
   const setLabel = session.totalSets === 1 ? "set" : "sets";
-  const volumeUnit = Math.round(session.totalVolume) === 1 ? "lb" : "lbs";
 
   return (
     <View style={[styles.previousSessionRow, { borderColor: theme.colors.border }]}>
@@ -611,11 +607,16 @@ function PreviousSessionRow({ session }: PreviousSessionRowProps) {
           {session.exerciseCount} {exerciseLabel} / {session.totalSets} {setLabel}
         </Text>
       </View>
-      <View style={styles.previousSessionVolume}>
-        <Text style={[styles.previousSessionVolumeValue, { color: theme.colors.text }]}>
-          {formatVolume(session.totalVolume)} {volumeUnit}
-        </Text>
-        <Text style={[styles.previousSessionVolumeLabel, { color: theme.colors.mutedText }]}>Volume</Text>
+
+      <View style={styles.previousExerciseList}>
+        {session.exercises.map((exercise) => (
+          <View key={exercise.id} style={styles.previousExerciseRow}>
+            <Text style={[styles.previousExerciseName, { color: theme.colors.text }]}>{exercise.exercise.name}</Text>
+            <Text style={[styles.previousExerciseStats, { color: theme.colors.secondaryText }]}>
+              {exercise.sets} sets / {exercise.reps} reps / {formatSliderValue(exercise.weight)} lb
+            </Text>
+          </View>
+        ))}
       </View>
     </View>
   );
@@ -1099,10 +1100,8 @@ const styles = StyleSheet.create({
     paddingRight: 16
   },
   previousSessionRow: {
-    alignItems: "center",
     borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    justifyContent: "space-between",
+    gap: 12,
     minHeight: 78,
     paddingHorizontal: 14,
     paddingVertical: 12
@@ -1121,18 +1120,28 @@ const styles = StyleSheet.create({
     lineHeight: 27,
     textTransform: "uppercase"
   },
-  previousSessionVolume: {
-    alignItems: "flex-end"
+  previousExerciseList: {
+    gap: 8
   },
-  previousSessionVolumeLabel: {
-    fontSize: 10,
+  previousExerciseName: {
+    flex: 1,
+    fontSize: 13,
     fontWeight: "800",
-    marginTop: 4,
+    lineHeight: 17,
+    paddingRight: 12,
     textTransform: "uppercase"
   },
-  previousSessionVolumeValue: {
-    fontSize: 18,
-    fontWeight: "800"
+  previousExerciseRow: {
+    alignItems: "baseline",
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+  previousExerciseStats: {
+    fontSize: 11,
+    fontWeight: "700",
+    lineHeight: 15,
+    textAlign: "right",
+    textTransform: "uppercase"
   },
   emptySessionHistory: {
     alignItems: "center",

@@ -23,15 +23,31 @@ export type CompletedWorkoutSession = {
   id: string;
   startedAt: string;
   completedAt: string;
+  exercises: StoredSessionExercise[];
   exerciseCount: number;
   totalSets: number;
-  totalVolume: number;
 };
 
 export type ProgressVolumePoint = {
   id: string;
   completedAt: string;
   volume: number;
+};
+
+export type ProgressAverageWeightPoint = {
+  id: string;
+  completedAt: string;
+  averageWeight: number;
+  totalReps: number;
+};
+
+export type ProgressStrengthPoint = {
+  id: string;
+  completedAt: string;
+  estimatedOneRepMax: number;
+  weight: number;
+  reps: number;
+  exerciseName: string;
 };
 
 export type ProgressLiftOption = {
@@ -55,15 +71,28 @@ type CompletedWorkoutSessionRow = {
   id: string;
   started_at: string;
   completed_at: string;
-  exercise_count: number;
-  total_sets: number;
-  total_volume: number;
 };
 
 type ProgressVolumePointRow = {
   id: string;
   completed_at: string;
   volume: number;
+};
+
+type ProgressAverageWeightPointRow = {
+  id: string;
+  completed_at: string;
+  average_weight: number;
+  total_reps: number;
+};
+
+type ProgressStrengthPointRow = {
+  id: string;
+  completed_at: string;
+  estimated_one_rep_max: number;
+  weight: number;
+  reps: number;
+  exercise_name: string;
 };
 
 type ProgressLiftOptionRow = {
@@ -117,32 +146,159 @@ export async function getCompletedWorkoutSessions(limit = 8) {
   const database = await getDatabase();
   const rows = await database.getAllAsync<CompletedWorkoutSessionRow>(
     `SELECT
-       workout_sessions.id,
-       workout_sessions.started_at,
-       workout_sessions.completed_at,
-       COUNT(DISTINCT workout_exercises.id) AS exercise_count,
-       COUNT(set_entries.id) AS total_sets,
-       COALESCE(SUM(set_entries.weight * set_entries.reps), 0) AS total_volume
+       id,
+       started_at,
+       completed_at
      FROM workout_sessions
-     LEFT JOIN workout_exercises
-       ON workout_exercises.workout_session_id = workout_sessions.id
-     LEFT JOIN set_entries
-       ON set_entries.workout_exercise_id = workout_exercises.id
-     WHERE workout_sessions.completed_at IS NOT NULL
-     GROUP BY workout_sessions.id
-     ORDER BY workout_sessions.completed_at DESC
+     WHERE completed_at IS NOT NULL
+     ORDER BY completed_at DESC
      LIMIT ?;`,
     [limit]
   );
 
-  return rows.map((row) => ({
+  return Promise.all(
+    rows.map(async (row) => {
+      const exercises = await getWorkoutExercises(row.id);
+
+      return {
+        id: row.id,
+        startedAt: row.started_at,
+        completedAt: row.completed_at,
+        exercises,
+        exerciseCount: exercises.length,
+        totalSets: exercises.reduce((sum, exercise) => sum + exercise.sets, 0)
+      };
+    })
+  );
+}
+
+export async function getProgressAverageWeightSeries(input: { liftKey?: string | null; limit?: number } = {}) {
+  if (Platform.OS === "web") {
+    return getWebProgressAverageWeightSeries(input);
+  }
+
+  const database = await getDatabase();
+  const limit = input.limit ?? 120;
+  const rows = input.liftKey
+    ? await database.getAllAsync<ProgressAverageWeightPointRow>(
+        `SELECT
+           workout_sessions.id,
+           workout_sessions.completed_at,
+           COALESCE(SUM(set_entries.weight * set_entries.reps) / NULLIF(SUM(set_entries.reps), 0), 0) AS average_weight,
+           COALESCE(SUM(set_entries.reps), 0) AS total_reps
+         FROM workout_sessions
+         INNER JOIN workout_exercises
+           ON workout_exercises.workout_session_id = workout_sessions.id
+         INNER JOIN set_entries
+           ON set_entries.workout_exercise_id = workout_exercises.id
+         WHERE workout_sessions.completed_at IS NOT NULL
+           AND COALESCE(workout_exercises.exercise_id, 'custom:' || lower(workout_exercises.exercise_name_snapshot)) = ?
+         GROUP BY workout_sessions.id
+         ORDER BY workout_sessions.completed_at DESC
+         LIMIT ?;`,
+        [input.liftKey, limit]
+      )
+    : await database.getAllAsync<ProgressAverageWeightPointRow>(
+        `SELECT
+           workout_sessions.id,
+           workout_sessions.completed_at,
+           COALESCE(SUM(set_entries.weight * set_entries.reps) / NULLIF(SUM(set_entries.reps), 0), 0) AS average_weight,
+           COALESCE(SUM(set_entries.reps), 0) AS total_reps
+         FROM workout_sessions
+         INNER JOIN workout_exercises
+           ON workout_exercises.workout_session_id = workout_sessions.id
+         INNER JOIN set_entries
+           ON set_entries.workout_exercise_id = workout_exercises.id
+         WHERE workout_sessions.completed_at IS NOT NULL
+         GROUP BY workout_sessions.id
+         ORDER BY workout_sessions.completed_at DESC
+         LIMIT ?;`,
+        [limit]
+      );
+
+  return rows.reverse().map((row) => ({
     id: row.id,
-    startedAt: row.started_at,
     completedAt: row.completed_at,
-    exerciseCount: row.exercise_count,
-    totalSets: row.total_sets,
-    totalVolume: row.total_volume
+    averageWeight: row.average_weight,
+    totalReps: row.total_reps
   }));
+}
+
+export async function getProgressStrengthSeries(input: { liftKey?: string | null; limit?: number } = {}) {
+  if (Platform.OS === "web") {
+    return getWebProgressStrengthSeries(input);
+  }
+
+  const database = await getDatabase();
+  const limit = input.limit ?? 120;
+  const rows = input.liftKey
+    ? await database.getAllAsync<ProgressStrengthPointRow>(
+        `SELECT
+           ranked_sets.id,
+           ranked_sets.completed_at,
+           ranked_sets.estimated_one_rep_max,
+           ranked_sets.weight,
+           ranked_sets.reps,
+           ranked_sets.exercise_name
+         FROM (
+           SELECT
+             workout_sessions.id,
+             workout_sessions.completed_at,
+             set_entries.weight * (1 + set_entries.reps / 30.0) AS estimated_one_rep_max,
+             set_entries.weight,
+             set_entries.reps,
+             workout_exercises.exercise_name_snapshot AS exercise_name,
+             ROW_NUMBER() OVER (
+               PARTITION BY workout_sessions.id
+               ORDER BY set_entries.weight * (1 + set_entries.reps / 30.0) DESC, set_entries.weight DESC
+             ) AS strength_rank
+           FROM workout_sessions
+           INNER JOIN workout_exercises
+             ON workout_exercises.workout_session_id = workout_sessions.id
+           INNER JOIN set_entries
+             ON set_entries.workout_exercise_id = workout_exercises.id
+           WHERE workout_sessions.completed_at IS NOT NULL
+             AND COALESCE(workout_exercises.exercise_id, 'custom:' || lower(workout_exercises.exercise_name_snapshot)) = ?
+         ) ranked_sets
+         WHERE ranked_sets.strength_rank = 1
+         ORDER BY ranked_sets.completed_at DESC
+         LIMIT ?;`,
+        [input.liftKey, limit]
+      )
+    : await database.getAllAsync<ProgressStrengthPointRow>(
+        `SELECT
+           ranked_sets.id,
+           ranked_sets.completed_at,
+           ranked_sets.estimated_one_rep_max,
+           ranked_sets.weight,
+           ranked_sets.reps,
+           ranked_sets.exercise_name
+         FROM (
+           SELECT
+             workout_sessions.id,
+             workout_sessions.completed_at,
+             set_entries.weight * (1 + set_entries.reps / 30.0) AS estimated_one_rep_max,
+             set_entries.weight,
+             set_entries.reps,
+             workout_exercises.exercise_name_snapshot AS exercise_name,
+             ROW_NUMBER() OVER (
+               PARTITION BY workout_sessions.id
+               ORDER BY set_entries.weight * (1 + set_entries.reps / 30.0) DESC, set_entries.weight DESC
+             ) AS strength_rank
+           FROM workout_sessions
+           INNER JOIN workout_exercises
+             ON workout_exercises.workout_session_id = workout_sessions.id
+           INNER JOIN set_entries
+             ON set_entries.workout_exercise_id = workout_exercises.id
+           WHERE workout_sessions.completed_at IS NOT NULL
+         ) ranked_sets
+         WHERE ranked_sets.strength_rank = 1
+         ORDER BY ranked_sets.completed_at DESC
+         LIMIT ?;`,
+        [limit]
+      );
+
+  return rows.reverse().map(mapProgressStrengthPointRow);
 }
 
 export async function getProgressLiftOptions() {
@@ -384,22 +540,14 @@ async function getCompletedWebWorkoutSessions(limit: number) {
     .filter((session) => Boolean(session.completedAt))
     .sort((first, second) => (second.completedAt ?? "").localeCompare(first.completedAt ?? ""))
     .slice(0, limit)
-    .map((session) => {
-      const totalSets = session.exercises.reduce((sum, exercise) => sum + exercise.sets, 0);
-      const totalVolume = session.exercises.reduce(
-        (sum, exercise) => sum + exercise.sets * exercise.reps * exercise.weight,
-        0
-      );
-
-      return {
-        id: session.id,
-        startedAt: session.startedAt,
-        completedAt: session.completedAt ?? session.updatedAt,
-        exerciseCount: session.exercises.length,
-        totalSets,
-        totalVolume
-      };
-    });
+    .map((session) => ({
+      id: session.id,
+      startedAt: session.startedAt,
+      completedAt: session.completedAt ?? session.updatedAt,
+      exercises: session.exercises,
+      exerciseCount: session.exercises.length,
+      totalSets: session.exercises.reduce((sum, exercise) => sum + exercise.sets, 0)
+    }));
 }
 
 async function getWebProgressLiftOptions() {
@@ -445,6 +593,64 @@ async function getWebProgressVolumeSeries(input: { liftKey?: string | null; limi
         .reduce((sum, exercise) => sum + exercise.sets * exercise.reps * exercise.weight, 0)
     }))
     .filter((point) => point.volume > 0)
+    .sort((first, second) => first.completedAt.localeCompare(second.completedAt))
+    .slice(-limit);
+}
+
+async function getWebProgressAverageWeightSeries(input: { liftKey?: string | null; limit?: number }) {
+  const sessions = await getWebWorkoutSessions();
+  const limit = input.limit ?? 120;
+
+  return sessions
+    .filter((session) => Boolean(session.completedAt))
+    .map((session) => {
+      const matchingExercises = session.exercises.filter(
+        (exercise) => !input.liftKey || getExerciseProgressKey(exercise.exercise.id, exercise.exercise.name) === input.liftKey
+      );
+      const totalVolume = matchingExercises.reduce(
+        (sum, exercise) => sum + exercise.sets * exercise.reps * exercise.weight,
+        0
+      );
+      const totalReps = matchingExercises.reduce((sum, exercise) => sum + exercise.sets * exercise.reps, 0);
+
+      return {
+        id: session.id,
+        completedAt: session.completedAt ?? session.updatedAt,
+        averageWeight: totalReps > 0 ? totalVolume / totalReps : 0,
+        totalReps
+      };
+    })
+    .filter((point) => point.totalReps > 0)
+    .sort((first, second) => first.completedAt.localeCompare(second.completedAt))
+    .slice(-limit);
+}
+
+async function getWebProgressStrengthSeries(input: { liftKey?: string | null; limit?: number }) {
+  const sessions = await getWebWorkoutSessions();
+  const limit = input.limit ?? 120;
+
+  return sessions
+    .filter((session) => Boolean(session.completedAt))
+    .map((session) => {
+      const bestExercise = session.exercises
+        .filter((exercise) => !input.liftKey || getExerciseProgressKey(exercise.exercise.id, exercise.exercise.name) === input.liftKey)
+        .map((exercise) => ({
+          exerciseName: exercise.exercise.name,
+          estimatedOneRepMax: estimateOneRepMax(exercise.weight, exercise.reps),
+          reps: exercise.reps,
+          weight: exercise.weight
+        }))
+        .sort((first, second) => second.estimatedOneRepMax - first.estimatedOneRepMax || second.weight - first.weight)[0];
+
+      return bestExercise
+        ? {
+            id: session.id,
+            completedAt: session.completedAt ?? session.updatedAt,
+            ...bestExercise
+          }
+        : null;
+    })
+    .filter((point): point is ProgressStrengthPoint => Boolean(point))
     .sort((first, second) => first.completedAt.localeCompare(second.completedAt))
     .slice(-limit);
 }
@@ -555,6 +761,21 @@ function isWebWorkoutSession(value: unknown): value is WebWorkoutSession {
 
 function getExerciseProgressKey(exerciseId: string, exerciseName: string) {
   return exerciseId.startsWith("custom-") ? `custom:${exerciseName.toLowerCase()}` : exerciseId;
+}
+
+function estimateOneRepMax(weight: number, reps: number) {
+  return weight * (1 + reps / 30);
+}
+
+function mapProgressStrengthPointRow(row: ProgressStrengthPointRow): ProgressStrengthPoint {
+  return {
+    id: row.id,
+    completedAt: row.completed_at,
+    estimatedOneRepMax: row.estimated_one_rep_max,
+    weight: row.weight,
+    reps: row.reps,
+    exerciseName: row.exercise_name
+  };
 }
 
 async function getNextExerciseOrder(sessionId: string) {

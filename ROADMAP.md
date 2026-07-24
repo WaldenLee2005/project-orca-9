@@ -108,7 +108,7 @@ Current progress:
 - SQLite schema and repositories exist for profiles, workout sessions, workout exercises, and set entries.
 - Saved session exercises persist locally as normalized exercise and set rows.
 - Completed sessions are marked with `completed_at` and can be queried for progress charts.
-- Recent completed sessions appear in the Session tab as a compact history list.
+- Recent completed sessions appear in the Session tab as a compact itemized exercise history list.
 
 ## Phase 5: Programs
 
@@ -151,7 +151,15 @@ Deliverables:
 - Personal records.
 - Program adherence.
 
-Status: Planned.
+Status: In progress.
+
+Current progress:
+
+- Progress tab defaults to PRs as a running best estimated one-rep max from saved completed sessions.
+- Users can view all-lift strength trends or open an exercise picker to choose a specific saved lift.
+- Average Weight is available as a separate per-session intensity tab.
+- Volume is available as a secondary workload tab.
+- Time ranges support 1M, 3M, and All views.
 
 ## Phase 8: Health and Fitness Integrations
 
