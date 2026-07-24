@@ -128,6 +128,7 @@ function DevDiagnosticsConsole() {
   );
 
   const unresolvedOperations = snapshot.operations.filter((operation) => operation.status === "pending");
+  const recentOperations = snapshot.operations.filter((operation) => operation.status !== "pending");
   const latestFailure = snapshot.events.find((event) => event.level === "error");
   const badgeText = stuckOperations.length > 0 ? `${stuckOperations.length} stuck` : latestFailure ? "error" : "dev";
 
@@ -180,6 +181,12 @@ function DevDiagnosticsConsole() {
               ))}
             </DiagnosticSection>
 
+            <DiagnosticSection title="Recent" emptyText="No completed operations yet.">
+              {recentOperations.map((operation) => (
+                <OperationRow key={operation.id} operation={operation} currentTime={clock} />
+              ))}
+            </DiagnosticSection>
+
             <DiagnosticSection title="Failures And Signals" emptyText="No warnings or errors recorded yet.">
               {snapshot.events.map((event) => (
                 <EventRow event={event} key={event.id} />
@@ -209,11 +216,13 @@ function DiagnosticSection({ children, emptyText, title }: PropsWithChildren<{ e
 
 function OperationRow({ currentTime, operation }: { currentTime: number; operation: DevDiagnosticOperation }) {
   const elapsedSeconds = Math.max(0, Math.round((currentTime - Date.parse(operation.startedAt)) / 1000));
+  const durationText =
+    operation.status === "pending" ? `${elapsedSeconds}s` : `${operation.durationMs ?? 0}ms`;
 
   return (
     <View style={styles.row}>
       <Text style={styles.rowTitle}>
-        {operation.label} / {operation.status} / {elapsedSeconds}s
+        {operation.label} / {operation.status} / {durationText}
       </Text>
       {operation.detail ? <Text style={styles.rowDetail}>{operation.detail}</Text> : null}
     </View>

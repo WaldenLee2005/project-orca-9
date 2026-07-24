@@ -28,7 +28,13 @@ export type UserProfileInput = {
   preferredSchedule: string[];
 };
 
+let currentUserProfileCache: UserProfile | null | undefined;
+
 export async function getCurrentUserProfile() {
+  if (currentUserProfileCache !== undefined) {
+    return currentUserProfileCache;
+  }
+
   const database = await getDatabase();
   const row = await database.getFirstAsync<UserProfileRow>(
     `SELECT
@@ -48,7 +54,8 @@ export async function getCurrentUserProfile() {
      LIMIT 1;`
   );
 
-  return row ? mapUserProfileRow(row) : null;
+  currentUserProfileCache = row ? mapUserProfileRow(row) : null;
+  return currentUserProfileCache;
 }
 
 export async function upsertUserProfile(input: UserProfileInput, existingId?: string) {
@@ -102,7 +109,22 @@ export async function upsertUserProfile(input: UserProfileInput, existingId?: st
     ]
   );
 
-  return { id, ...input };
+  currentUserProfileCache = { id, ...input };
+  return currentUserProfileCache;
+}
+
+export function getCachedCurrentUserProfile() {
+  return currentUserProfileCache ?? null;
+}
+
+export function warmCurrentUserProfileCache() {
+  getCurrentUserProfile().catch(() => {
+    currentUserProfileCache = null;
+  });
+}
+
+export function clearCurrentUserProfileCache() {
+  currentUserProfileCache = null;
 }
 
 function mapUserProfileRow(row: UserProfileRow): UserProfile {

@@ -164,3 +164,53 @@ Reason:
 - Failures and stuck async work should be visible while building without leaking a debug surface into ordinary app starts.
 - The diagnostics layer should be app-wide so errors can be inspected from any screen.
 - Feature modules can opt into richer stuck-state reporting by wrapping important async work with `trackDevOperation`.
+
+## 2026-07-24: Keep Active Session Writes Small And Observable
+
+Decision: Saving an exercise should batch set-entry inserts and return the saved row from known values instead of re-reading the whole active session.
+
+Reason:
+
+- Gym logging should feel immediate even when dev diagnostics are enabled.
+- One native SQLite call for set rows is cheaper than one call per set.
+- Dev diagnostics now retain only recent completed operations and report slow operation timings so the overlay does not become a source of storage latency.
+
+## 2026-07-24: Do Not Block Primary Flows On Local Profile Cache Reads
+
+Decision: Login/session flows should use in-memory profile/auth state first and move local cache reads or repairs off the primary interaction path.
+
+Reason:
+
+- Supabase auth may finish quickly while post-auth avatar, social profile, or SQLite cache work is still slow.
+- Starting a workout session should not wait on a local profile lookup; `profile_id` is optional for local sessions.
+- The local profile repository keeps a small in-memory cache so repeated profile/session reads avoid unnecessary SQLite calls.
+
+## 2026-07-24: Completed Sessions Power Workout History And Progress
+
+Decision: Save Session should mark a workout session completed in SQLite by setting `workout_sessions.completed_at`; progress charts and history should read from completed session, exercise, and set rows instead of a separate tracking store.
+
+Reason:
+
+- The logger already writes normalized exercise and set data during the workout.
+- A completion timestamp cleanly separates active sessions from workout history.
+- Reusing the local-first workout tables keeps the future progress dashboard simple and avoids duplicate data.
+
+## 2026-07-24: SQLite Initialization Should Fail Visibly And Retry
+
+Decision: The shared SQLite open/migration promise should time out and reset if initialization stalls, and workout completion should prevent duplicate in-flight saves.
+
+Reason:
+
+- A stuck database open can otherwise leave active-session load, session creation, and session completion pending indefinitely.
+- Resetting the shared promise lets the next user action retry database initialization.
+- Disabling Save Session while it is in flight prevents duplicate completion operations and noisy diagnostics.
+
+## 2026-07-24: Use AsyncStorage For Web Workout Persistence
+
+Decision: The web development build should persist workout sessions with AsyncStorage while native builds continue using Expo SQLite.
+
+Reason:
+
+- Expo SQLite can stall during browser initialization in the current dev build.
+- The workout loop still needs to be testable on web without pending storage operations.
+- Native remains the production persistence target for normalized workout/session/set tables.

@@ -2,15 +2,37 @@ import * as SQLite from "expo-sqlite";
 
 const DATABASE_NAME = "orca9.db";
 const DATABASE_VERSION = 2;
+const DATABASE_OPEN_TIMEOUT_MS = 8000;
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 export async function getDatabase() {
   if (!databasePromise) {
-    databasePromise = openAndMigrateDatabase();
+    databasePromise = withTimeout(
+      openAndMigrateDatabase(),
+      DATABASE_OPEN_TIMEOUT_MS,
+      `SQLite did not open within ${DATABASE_OPEN_TIMEOUT_MS}ms.`
+    ).catch((error) => {
+      databasePromise = null;
+      throw error;
+    });
   }
 
   return databasePromise;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  });
 }
 
 async function openAndMigrateDatabase() {
@@ -93,24 +115,25 @@ async function ensureCoreTables(database: SQLite.SQLiteDatabase) {
 }
 
 async function ensureProfileColumns(database: SQLite.SQLiteDatabase) {
-  await addColumnIfMissing(database, "user_profiles", "auth_user_id", "TEXT");
-  await addColumnIfMissing(database, "user_profiles", "email", "TEXT");
-  await addColumnIfMissing(database, "user_profiles", "handle", "TEXT");
-  await addColumnIfMissing(database, "user_profiles", "avatar_url", "TEXT");
-  await addColumnIfMissing(database, "user_profiles", "profile_visibility", "TEXT NOT NULL DEFAULT 'private'");
+  const columns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(user_profiles);");
+  const existingColumnNames = new Set(columns.map((column) => column.name));
+
+  await addColumnIfMissing(database, existingColumnNames, "auth_user_id", "TEXT");
+  await addColumnIfMissing(database, existingColumnNames, "email", "TEXT");
+  await addColumnIfMissing(database, existingColumnNames, "handle", "TEXT");
+  await addColumnIfMissing(database, existingColumnNames, "avatar_url", "TEXT");
+  await addColumnIfMissing(database, existingColumnNames, "profile_visibility", "TEXT NOT NULL DEFAULT 'private'");
 }
 
 async function addColumnIfMissing(
   database: SQLite.SQLiteDatabase,
-  tableName: string,
+  existingColumnNames: Set<string>,
   columnName: string,
   columnDefinition: string
 ) {
-  const columns = await database.getAllAsync<{ name: string }>(`PRAGMA table_info(${tableName});`);
-  const hasColumn = columns.some((column) => column.name === columnName);
-
-  if (!hasColumn) {
-    await database.execAsync(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition};`);
+  if (!existingColumnNames.has(columnName)) {
+    await database.execAsync(`ALTER TABLE user_profiles ADD COLUMN ${columnName} ${columnDefinition};`);
+    existingColumnNames.add(columnName);
   }
 }
 
