@@ -1,5 +1,13 @@
 # Decision Log
 
+## 2026-10-01: Use Opt-In Adaptive Local Workout Reminders
+
+Decision: Schedule notifications on the device from actual session-completion times and existing rest schedules. Profile controls opt-in plus the starting workout/rest times, defaulting to 6:00 PM/8:00 AM. Learning uses one latest completion per local date over 28 days and a circular time average. Training reminders occur 15 minutes before and 2 hours after that average, clamped to the same date; completed days are suppressed and rest days receive only a morning notice.
+
+Reason: Workout logging already works offline without an account. Reusing its local history preserves that model and avoids a push backend, tokens, fabricated activity or account-dependent reminders. Only today's message can quote the known streak; future messages remain general.
+
+Tradeoffs: The app schedules a rolling 28-day horizon (at most 56 notices), replenished on launch/resume, foreground date/timezone changes and training writes. Users must reopen it at least every 28 days. Already scheduled delivery does not depend on background JavaScript. An existing native app needs rebuilding and system notification permission; web is unsupported. Android exact-alarm permission is intentionally omitted, so the OS may delay delivery. Native permission/delivery tests remain pending. See `apps/mobile/src/features/reminders/README.md` for platform evidence and verification.
+
 ## 2026-07-23: Use React Native with Expo
 
 Decision: Build the app with React Native and Expo.

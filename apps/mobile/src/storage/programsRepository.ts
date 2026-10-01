@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 import { isScheduleRevision, parseTrainingProgram, reviseSchedule, validateProgram, type ProgramDraft, type TrainingProgram, type ScheduleRevision } from "../features/programs/programModel";
 import { createLocalId, getDatabase } from "./database";
 import { ensureWebTrainingStorage } from "./trainingStorage";
+import { emitTrainingChange } from "./trainingChanges";
 
 const LIBRARY_KEY = "orca9.programLibrary.v3";
 type ProgramLibrary = { version: 3; programs: TrainingProgram[]; history: ScheduleRevision[] };
@@ -47,6 +48,7 @@ async function writeLibrary(library: ProgramLibrary) {
   const value = JSON.stringify(library);
   if (Platform.OS === "web") await AsyncStorage.setItem(LIBRARY_KEY, value);
   else await (await getDatabase()).runAsync("INSERT INTO program_library (id, data_json) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET data_json = excluded.data_json;", [value]);
+  emitTrainingChange();
 }
 
 export async function getProgramLibrary() {

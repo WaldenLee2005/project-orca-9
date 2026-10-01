@@ -17,6 +17,7 @@ import { withTimeout } from "../../src/lib/withTimeout";
 import { clearCurrentUserProfileCache, getCurrentUserProfile, upsertUserProfile } from "../../src/storage/profilesRepository";
 import { useAppTheme, useThemeStyles } from "../../src/theme/ThemeProvider";
 import { UserProfile } from "../../src/types/fitness";
+import { ReminderSettings } from "../../src/features/reminders/ReminderSettings";
 
 export default function ProfileScreen() {
   const { styles, colors, ui } = useThemeStyles(themedStyles);
@@ -86,6 +87,7 @@ export default function ProfileScreen() {
           <InfoRow label="Cloud sync" value="Not enabled" />
         </View>
         <Text style={styles.footnote}>Workouts, programs, and progress stay local—even when you sign in.</Text>
+        <ReminderSettings />
         {statusText ? <Text accessibilityRole="alert" style={[styles.statusText, { color: theme.colors.secondaryText }]}>{statusText}</Text> : null}
         <Text style={styles.sectionLabel}>OPTIONAL ACCOUNT</Text>
         <View style={styles.actions}>
@@ -166,6 +168,7 @@ export default function ProfileScreen() {
         <InfoRow label="Cloud sync" value="Not enabled" />
       </View>
       <Text style={styles.footnote}>Signing in manages your profile. Your workout history and programs remain on this device.</Text>
+      <ReminderSettings />
 
       {statusText ? <Text style={[styles.statusText, { color: theme.colors.secondaryText }]}>{statusText}</Text> : null}
 

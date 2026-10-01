@@ -135,8 +135,19 @@ Deliverables:
 - Current streak display.
 - Weekly consistency view.
 - Missed workout handling.
+- Adaptive workout, streak and morning rest-day reminders.
 
-Status: Planned.
+Status: In progress; rest-aware streaks and local reminders implemented.
+
+Current progress:
+
+- Profile opt-in schedules reminders before learned session-save times, follows up on unlogged training days and respects manual/scheduled rest.
+- A rolling 28-day local schedule refreshes with app activity and saved training changes; no backend or training-data reset is needed.
+
+Remaining:
+
+- Verify notification permission flows and delivery on rebuilt iOS/Android devices, including completion cancellation, rest/schedule edits and timezone changes.
+- Broader consistency/history presentation remains separate from reminders.
 
 ## Phase 7: Progress Dashboard
 

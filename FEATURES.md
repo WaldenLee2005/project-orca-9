@@ -135,6 +135,16 @@ Expected capabilities:
 
 - Weekly consistency view.
 
+### Workout reminders
+
+Status: Implemented; native delivery and permission smoke tests pending.
+
+- Opt in from Profile on iOS/Android; works with guest or signed-in use and learns from the device's existing completed sessions.
+- A local circular average of the latest saved session per day over 28 days sets a reminder 15 minutes before and a follow-up 2 hours after; saving a session cancels its date's remaining notices. Offsets stay on the same date.
+- Manual and scheduled rest days receive a morning reminder only. Profile adjusts the 8:00 AM rest time and 6:00 PM starting workout time used without recent history. Today may mention the known streak; future messages never invent one.
+- Up to 28 days of local notifications refresh on launch/resume, date/timezone changes while foregrounded, and relevant training changes. Open Orca at least every 28 days to replenish them. No push backend, account requirement, or training-data migration.
+- Rebuilt native app and notification permission required; web is unsupported. Android exact-alarm permission is not requested, so delivery can be delayed by the OS. Implementation and device checklist: `apps/mobile/src/features/reminders/README.md`.
+
 ### Progress Dashboard
 
 Status: Started; original chart dashboard restored.

@@ -30,6 +30,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (context.parentURL?.endsWith("/programs/starterPrograms.ts") && specifier === "./programModel") return nextResolve(new URL("./programModel.ts", context.parentURL).href, context);
   if (context.parentURL?.endsWith("/programs/importProgram.ts") && ["./programModel", "../exercises/exerciseSearch"].includes(specifier)) return nextResolve(new URL(`${specifier}.ts`, context.parentURL).href, context);
   if (specifier === "./trainingStorage") return nextResolve(new URL("../src/storage/trainingStorage.ts", import.meta.url).href, context);
+  if (specifier === "./trainingChanges") return nextResolve(new URL("../src/storage/trainingChanges.ts", import.meta.url).href, context);
   if (specifier === "./programsRepository") return nextResolve(new URL("../src/storage/programsRepository.ts", import.meta.url).href, context);
   if (specifier === "../features/programs/programModel") return nextResolve(new URL("../src/features/programs/programModel.ts", import.meta.url).href, context);
   if (context.parentURL?.endsWith("/storage/database.ts") && specifier === "expo-sqlite") {

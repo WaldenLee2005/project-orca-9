@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { DevDiagnosticsRoot } from "../src/dev/DevDiagnostics";
 import { ThemeProvider, useAppTheme } from "../src/theme/ThemeProvider";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { ReminderCoordinator } from "../src/features/reminders/ReminderCoordinator";
 
 export default function RootLayout() {
   return (
@@ -17,6 +18,7 @@ function AppNavigation() {
   return (
     <DevDiagnosticsRoot>
       <StatusBar style={isDark ? "light" : "dark"} />
+      <ReminderCoordinator />
       <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
         <Stack
           screenOptions={{

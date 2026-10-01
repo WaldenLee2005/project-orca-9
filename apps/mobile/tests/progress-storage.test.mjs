@@ -24,6 +24,7 @@ const modules = {
 };
 registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier === "./trainingStorage") return nextResolve(new URL("../src/storage/trainingStorage.ts", import.meta.url).href, context);
+  if (specifier === "./trainingChanges") return nextResolve(new URL("../src/storage/trainingChanges.ts", import.meta.url).href, context);
   if (specifier === "./programsRepository") return nextResolve(new URL("../src/storage/programsRepository.ts", import.meta.url).href, context);
   if (specifier === "../features/programs/programModel") return nextResolve(new URL("../src/features/programs/programModel.ts", import.meta.url).href, context);
   if (/\/(programsRepository|workoutsRepository|streaksRepository|trainingStorage)\.ts$/.test(context.parentURL ?? "") && modules[specifier]) {

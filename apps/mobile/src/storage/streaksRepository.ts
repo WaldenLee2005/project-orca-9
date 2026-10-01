@@ -4,6 +4,7 @@ import { getDatabase } from "./database";
 import { getProgramScheduleHistory } from "./programsRepository";
 import { dateOrdinal, getScheduledRestDates } from "../features/programs/programModel";
 import { ensureWebTrainingStorage } from "./trainingStorage";
+import { emitTrainingChange } from "./trainingChanges";
 
 const WEB_REST_DAYS_KEY = "orca9.restDays";
 
@@ -87,15 +88,17 @@ export async function markTodayAsRestDay() {
     const dates = await getWebRestDays();
     if (!dates.includes(dateKey)) {
       await AsyncStorage.setItem(WEB_REST_DAYS_KEY, JSON.stringify([...dates, dateKey]));
+      emitTrainingChange();
     }
     return dateKey;
   }
 
   const database = await getDatabase();
-  await database.runAsync(
+  const result = await database.runAsync(
     "INSERT OR IGNORE INTO consistency_days (date_key, kind, created_at) VALUES (?, 'rest', ?);",
     [dateKey, new Date().toISOString()]
   );
+  if (result.changes > 0) emitTrainingChange();
   return dateKey;
 }
 

@@ -14,6 +14,9 @@ Current implementation:
 - Active workout saves batch set-entry inserts and avoid reloading the full session after each write.
 - Saving a session marks `workout_sessions.completed_at`, leaving completed workout data available for history and progress charts.
 - Database initialization times out and resets the shared open promise if SQLite stalls, allowing later retries instead of trapping workout actions in a pending state.
+- `reminderRepository.ts` reads existing completed-session timestamps, manual rest dates and program schedule revisions from SQLite/web storage. Invalid or failed reads surface an error so reminders can remove stale notices without overwriting history; no schema migration or reset is added.
+- Reminder preferences and the small delivery ledger use AsyncStorage keys `orca9.reminderSettings.v1` and `orca9.reminderLedger.v1`. They belong to this device's existing training history, not a separate signed-in account; no workout details or push tokens are copied into them.
+- `trainingChanges.ts` notifies reminder observers after successful workout completion, manual rest and program-library writes. Observer errors never fail the underlying saved training action. See `../features/reminders/README.md` for the scheduling boundary.
 
 Storage-size rules:
 

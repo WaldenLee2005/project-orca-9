@@ -57,6 +57,7 @@ apps/mobile/
       progress/
       programs/
       streaks/
+      reminders/
       integrations/
     data/
     lib/
@@ -121,6 +122,13 @@ Owns locally saved, user-created multi-day programs with weekly/cycle schedules.
 Owns streak rules, including rest-day-aware streaks. A planned rest day should count as maintaining consistency instead of requiring a fake workout check-in.
 
 `calculateStreakSummary` also returns `currentActiveDays` and `currentRestDays` for the muted streak subtitle. It classifies each distinct date in the current streak once, prioritizing completed workouts over overlapping manual/scheduled rest. These counts sum to `currentStreak`; older broken runs and future dates are excluded.
+
+### Reminders
+
+- `reminderPlan.ts` derives at most 56 notices over 28 local dates from completed-session timestamps, manual rest and dated schedule revisions. It uses a circular average of the latest completion per date over 28 days; training reminders precede that time by 15 minutes and follow it by 2 hours, bounded to the same day. Completed dates are skipped; rest dates get only their morning reminder. Future messages never assume future workouts or streak counts.
+- `reminderService.ts` owns serialized preferences and scheduling; `reminderScheduler.ts` reconciles only Orca-owned notification IDs with a small persisted ledger to prevent repeated date/kind delivery. `reminderRepository.ts` reads current SQLite/web training records without a migration. `trainingChanges.ts` publishes successful workout/rest/program writes without making persistence depend on observers.
+- The root `ReminderCoordinator` replenishes the plan on launch/resume, date/timezone changes while foregrounded, and training changes. Profile offers opt-in, permission recovery and adjustable fallback/rest times (6:00 PM/8:00 AM defaults). Preferences and history are device-local, shared with the existing guest/account logging model.
+- Native `expo-notifications` schedules delivery with the OS and opens Session on taps. Web is unsupported. Open the app at least every 28 days to extend the horizon; no server, push-token registration or background JavaScript is required for already scheduled notices. Native rebuild/device verification is required, and Android delivery may be inexact because Orca requests no exact-alarm permission. See `apps/mobile/src/features/reminders/README.md`.
 
 ### Progress
 

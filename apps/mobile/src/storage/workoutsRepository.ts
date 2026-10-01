@@ -6,6 +6,7 @@ import { getCachedCurrentUserProfile, warmCurrentUserProfileCache } from "./prof
 import { getScheduledDayIndex, parseWorkoutProgramPlan, toWorkoutProgramPlan, validateExerciseTarget, validateProgramLoad, type ProgramExercise, type WorkoutProgramPlan } from "../features/programs/programModel";
 import { getProgramLibrary } from "./programsRepository";
 import { ensureWebTrainingStorage } from "./trainingStorage";
+import { emitTrainingChange } from "./trainingChanges";
 
 export type WorkoutSet = { reps: number; weight: number; durationSeconds?: number | null; effort?: "easy" | "moderate" | "hard" | null; warmup?: boolean };
 export type ExerciseExposure = { sessionId: string; performedAt: string; exerciseId: string; actualSets: WorkoutSet[]; prescription?: ProgramExercise };
@@ -571,13 +572,14 @@ export async function completeWorkoutSession(sessionId: string) {
   const database = await getDatabase();
   const now = new Date().toISOString();
 
-  await database.runAsync(
+  const result = await database.runAsync(
     `UPDATE workout_sessions
      SET completed_at = COALESCE(completed_at, ?),
          updated_at = ?
      WHERE id = ?;`,
     [now, now, sessionId]
   );
+  if (result.changes > 0) emitTrainingChange();
 
   return { id: sessionId, completedAt: now };
 }
@@ -819,6 +821,7 @@ async function completeWebWorkoutSession(sessionId: string) {
   };
 
   await saveWebWorkoutSessions(nextSessions);
+  emitTrainingChange();
   return { id: sessionId, completedAt: nextSessions[sessionIndex].completedAt ?? now };
 }
 
