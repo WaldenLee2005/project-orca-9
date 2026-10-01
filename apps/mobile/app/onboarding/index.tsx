@@ -1,3 +1,5 @@
+import { createThemedStyles } from "../../src/theme/designSystem";
+import { ScreenHeading } from "../../src/components/ScreenHeading";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -21,8 +23,9 @@ import {
   getCurrentUserProfile,
   upsertUserProfile
 } from "../../src/storage/profilesRepository";
-import { useAppTheme } from "../../src/theme/ThemeProvider";
+import { useAppTheme, useThemeStyles } from "../../src/theme/ThemeProvider";
 import { withTimeout } from "../../src/lib/withTimeout";
+import { isSupabaseConfigured } from "../../src/lib/supabase";
 import { ProfileVisibility } from "../../src/types/fitness";
 
 const VISIBILITY_OPTIONS: { label: string; value: ProfileVisibility }[] = [
@@ -51,6 +54,7 @@ type CreatedProfileBackgroundInput = {
 };
 
 export default function OnboardingScreen() {
+  const { styles, colors, ui } = useThemeStyles(themedStyles);
   const router = useRouter();
   const searchParams = useLocalSearchParams<{ mode?: string }>();
   const theme = useAppTheme();
@@ -191,21 +195,16 @@ export default function OnboardingScreen() {
     const trimmedEmail = email.trim().toLowerCase();
 
     if (authMode === "settings") {
-      const session = await getCurrentAuthSession();
-
-      if (!session?.user) {
-        setSaveError("Sign in required.");
-        return;
-      }
-
-      if (isSubmitting) {
-        return;
-      }
-
       try {
         setIsSubmitting(true);
         setSaveError(null);
         setSaveNotice(null);
+        const session = await getCurrentAuthSession();
+
+        if (!session?.user) {
+          setSaveError("Sign in to edit your social profile. Your workouts are still available.");
+          return;
+        }
 
         const finalAvatarUrl = avatarUpload
           ? await uploadAvatarFromUri({
@@ -399,31 +398,49 @@ export default function OnboardingScreen() {
     }
   }
 
+  if (!isSupabaseConfigured()) {
+    return (
+      <View style={[styles.screen, styles.content, { backgroundColor: theme.colors.background }]}>
+        <Text style={[styles.title, { color: theme.colors.text }]}>Keep training</Text>
+        <Text style={[styles.copy, { color: theme.colors.secondaryText }]}>
+          Accounts are unavailable in this build. Your workouts, history, and streaks work without one.
+        </Text>
+        <Pressable accessibilityRole="button" onPress={() => router.replace("/workouts")} style={[styles.saveButton, { backgroundColor: theme.colors.accent }]}>
+          <Text style={[styles.saveButtonText, { color: theme.colors.onAccent }]}>Continue without account</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <ScrollView
         style={[styles.screen, { backgroundColor: theme.colors.background }]}
         contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
           <Text style={[styles.backText, { color: theme.colors.text }]}>Profile</Text>
         </Pressable>
 
-        <View style={styles.header}>
-          <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>
-            {authMode === "settings" ? "Settings" : "Setup"}
-          </Text>
-          <Text style={[styles.title, { color: theme.colors.text }]}>
-            {authMode === "settings" ? "Profile Settings" : "Lift Profile"}
-          </Text>
-          <Text style={[styles.copy, { color: theme.colors.secondaryText }]}>
-            {authMode === "settings"
-              ? "Update your name, photo, and privacy."
-              : "Create your account, choose a handle, and keep sharing private by default."}
-          </Text>
-        </View>
+        <ScreenHeading eyebrow={authMode === "settings" ? "Orca · Settings" : "Orca · Your account"}
+          title={authMode === "settings" ? "Account settings" : authMode === "sign_in" ? "Sign in" : "Create account"}
+          subtitle={authMode === "settings" ? "Manage your name, photo, and privacy." : "Optional. Workouts and programs work without an account."}
+          icon="person-circle-outline" />
+
+        {authMode !== "settings" ? (
+          <Pressable
+            accessibilityRole="button"
+            disabled={isSubmitting}
+            onPress={() => router.replace("/workouts")}
+            style={styles.backButton}
+          >
+            <Text style={[styles.backText, { color: theme.colors.text }]}>Continue without account</Text>
+          </Pressable>
+        ) : null}
 
         <View style={styles.form}>
           {authMode !== "settings" ? (
@@ -564,6 +581,7 @@ export default function OnboardingScreen() {
 
         <Pressable
           accessibilityRole="button"
+          disabled={isSubmitting}
           onPress={saveProfile}
           style={({ pressed }) => [
             styles.saveButton,
@@ -651,6 +669,7 @@ type FieldProps = {
 };
 
 function Field({ children, label }: FieldProps) {
+  const { styles, colors, ui } = useThemeStyles(themedStyles);
   const theme = useAppTheme();
 
   return (
@@ -669,6 +688,7 @@ type OptionGroupProps<T extends string> = {
 };
 
 function OptionGroup<T extends string>({ label, options, value, onChange }: OptionGroupProps<T>) {
+  const { styles, colors, ui } = useThemeStyles(themedStyles);
   const theme = useAppTheme();
 
   return (
@@ -711,7 +731,7 @@ function readProfileVisibility(metadata: Record<string, unknown>) {
   return value === "friends" || value === "public" ? value : "private";
 }
 
-const styles = StyleSheet.create({
+const themedStyles = createThemedStyles((colors, ui) => ({
   avatarPreview: {
     borderRadius: 24,
     height: 48,
@@ -727,18 +747,18 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 13,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontWeight: "600",
+    textTransform: "none"
   },
   content: {
-    paddingBottom: 48,
-    paddingHorizontal: 20,
-    paddingTop: 32
+    ...ui.content,
+    maxWidth: 660,
+    paddingBottom: 60,
   },
   copy: {
     fontSize: 15,
-    fontWeight: "700",
-    lineHeight: 22
+    fontWeight: "400",
+    lineHeight: 23,
   },
   debugLine: {
     fontSize: 11,
@@ -746,53 +766,57 @@ const styles = StyleSheet.create({
     lineHeight: 16
   },
   debugPanel: {
-    borderWidth: StyleSheet.hairlineWidth,
+    ...ui.input,
+    borderWidth: 0,
     gap: 4,
     marginTop: 16,
     padding: 12
   },
   debugTitle: {
     fontSize: 11,
-    fontWeight: "900",
-    textTransform: "uppercase"
+    fontWeight: "700",
+    textTransform: "none"
   },
   errorText: {
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
     lineHeight: 18,
     marginTop: 4,
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   eyebrow: {
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "600",
     letterSpacing: 0,
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   field: {
     gap: 10
   },
   form: {
-    gap: 20,
-    marginTop: 28
+    ...ui.group,
+    gap: 22,
+    marginTop: 28,
+    padding: 22,
   },
   handleInput: {
     flex: 1,
     fontSize: 17,
-    fontWeight: "800",
+    fontWeight: "400",
     minHeight: 54,
     paddingRight: 14,
     paddingVertical: 12
   },
   handleInputRow: {
+    ...ui.input,
     alignItems: "center",
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
     flexDirection: "row",
     minHeight: 54
   },
   handlePrefix: {
     fontSize: 17,
-    fontWeight: "900",
+    fontWeight: "700",
     paddingLeft: 14,
     paddingRight: 2
   },
@@ -802,27 +826,29 @@ const styles = StyleSheet.create({
   },
   feedbackText: {
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
     lineHeight: 18,
     marginTop: 20,
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   input: {
-    borderWidth: StyleSheet.hairlineWidth,
-    fontSize: 17,
-    fontWeight: "800",
+    ...ui.input,
+    borderWidth: 0,
+    fontSize: 16,
+    fontWeight: "400",
     minHeight: 54,
     paddingHorizontal: 14,
     paddingVertical: 12
   },
   label: {
     fontSize: 12,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontWeight: "600",
+    textTransform: "none"
   },
   lockedHandleRow: {
+    ...ui.input,
     alignItems: "center",
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
     flexDirection: "row",
     justifyContent: "space-between",
     minHeight: 54,
@@ -830,13 +856,15 @@ const styles = StyleSheet.create({
   },
   lockedHandleText: {
     fontSize: 17,
-    fontWeight: "800"
+    fontWeight: "600"
   },
   optionButton: {
-    borderWidth: StyleSheet.hairlineWidth,
-    minHeight: 44,
+    ...ui.control,
+    borderWidth: 0,
+    minHeight: 46,
     paddingHorizontal: 12,
-    paddingVertical: 12
+    paddingVertical: 12,
+    borderRadius: 14,
   },
   optionGrid: {
     flexDirection: "row",
@@ -845,10 +873,11 @@ const styles = StyleSheet.create({
   },
   optionText: {
     fontSize: 12,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontWeight: "600",
+    textTransform: "none"
   },
   saveButton: {
+    ...ui.primary,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 28,
@@ -858,21 +887,23 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 14,
-    fontWeight: "900",
-    textTransform: "uppercase"
+    fontWeight: "700",
+    textTransform: "none"
   },
   screen: {
     flex: 1
   },
   title: {
-    fontSize: 34,
-    fontWeight: "800",
+    fontSize: 31,
+    fontWeight: "600",
     lineHeight: 39,
-    textTransform: "uppercase"
+    textTransform: "none",
+    letterSpacing: -0.8,
   },
   uploadButton: {
+    ...ui.control,
     alignItems: "center",
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
     flexDirection: "row",
     gap: 12,
     minHeight: 72,
@@ -889,7 +920,7 @@ const styles = StyleSheet.create({
   },
   uploadTitle: {
     fontSize: 14,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontWeight: "600",
+    textTransform: "none"
   }
-});
+}));

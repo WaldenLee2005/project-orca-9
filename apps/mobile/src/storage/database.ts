@@ -1,7 +1,8 @@
 import * as SQLite from "expo-sqlite";
 
 const DATABASE_NAME = "orca9.db";
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 8;
+const PRELAUNCH_RESET_VERSION = 6;
 const DATABASE_OPEN_TIMEOUT_MS = 8000;
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
@@ -37,17 +38,40 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
 
 async function openAndMigrateDatabase() {
   const database = await SQLite.openDatabaseAsync(DATABASE_NAME);
+  await initializeDatabase(database);
+  return database;
+}
 
+export async function initializeDatabase(database: SQLite.SQLiteDatabase) {
   await database.execAsync("PRAGMA foreign_keys = ON;");
 
   await database.execAsync("PRAGMA auto_vacuum = INCREMENTAL;");
-  await ensureCoreTables(database);
-
-  await ensureProfileColumns(database);
-
-  await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION};`);
-
-  return database;
+  await database.withTransactionAsync(async () => {
+    const version = (await database.getFirstAsync<{ user_version: number }>("PRAGMA user_version;"))?.user_version ?? 0;
+    if (version > DATABASE_VERSION) throw new Error("This training data needs a newer version of Orca.");
+    if (version < PRELAUNCH_RESET_VERSION) {
+      // User-requested prelaunch reset of training data only, in foreign-key order.
+      await database.execAsync(`
+        DROP TABLE IF EXISTS set_entries;
+        DROP TABLE IF EXISTS workout_exercises;
+        DROP TABLE IF EXISTS workout_sessions;
+        DROP TABLE IF EXISTS consistency_days;
+        DROP TABLE IF EXISTS training_programs;
+        DROP TABLE IF EXISTS program_library;
+      `);
+    }
+    await ensureCoreTables(database);
+    const setColumns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(set_entries);");
+    if (!setColumns.some((column) => column.name === "duration_seconds")) {
+      await database.execAsync("ALTER TABLE set_entries ADD COLUMN duration_seconds INTEGER;");
+    }
+    if (!setColumns.some((column) => column.name === "effort")) await database.execAsync("ALTER TABLE set_entries ADD COLUMN effort TEXT;");
+    if (!setColumns.some((column) => column.name === "is_warmup")) await database.execAsync("ALTER TABLE set_entries ADD COLUMN is_warmup INTEGER NOT NULL DEFAULT 0;");
+    const exerciseColumns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(workout_exercises);");
+    if (!exerciseColumns.some((column) => column.name === "prescription_json")) await database.execAsync("ALTER TABLE workout_exercises ADD COLUMN prescription_json TEXT;");
+    await ensureProfileColumns(database);
+    await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION};`);
+  });
 }
 
 async function ensureCoreTables(database: SQLite.SQLiteDatabase) {
@@ -68,7 +92,7 @@ async function ensureCoreTables(database: SQLite.SQLiteDatabase) {
       profile_id TEXT,
       started_at TEXT NOT NULL,
       completed_at TEXT,
-      program_day_id TEXT,
+      program_plan_json TEXT,
       notes TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -82,6 +106,8 @@ async function ensureCoreTables(database: SQLite.SQLiteDatabase) {
       custom_exercise_name TEXT,
       exercise_name_snapshot TEXT NOT NULL,
       exercise_order INTEGER NOT NULL,
+      program_entry_id TEXT,
+      prescription_json TEXT,
       saved_at TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -94,10 +120,24 @@ async function ensureCoreTables(database: SQLite.SQLiteDatabase) {
       set_number INTEGER NOT NULL,
       weight REAL NOT NULL,
       reps INTEGER NOT NULL,
+      duration_seconds INTEGER,
+      effort TEXT,
+      is_warmup INTEGER NOT NULL DEFAULT 0,
       completed_at TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (workout_exercise_id) REFERENCES workout_exercises(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS consistency_days (
+      date_key TEXT PRIMARY KEY NOT NULL,
+      kind TEXT NOT NULL CHECK (kind = 'rest'),
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS program_library (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      data_json TEXT NOT NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_workout_sessions_started_at

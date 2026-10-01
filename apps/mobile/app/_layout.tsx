@@ -1,20 +1,30 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { DevDiagnosticsRoot } from "../src/dev/DevDiagnostics";
-import { ThemeProvider } from "../src/theme/ThemeProvider";
+import { ThemeProvider, useAppTheme } from "../src/theme/ThemeProvider";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <DevDiagnosticsRoot>
-        <StatusBar style="light" />
+      <AppNavigation />
+    </ThemeProvider>
+  );
+}
+
+function AppNavigation() {
+  const { colors, isDark } = useAppTheme();
+  return (
+    <DevDiagnosticsRoot>
+      <StatusBar style={isDark ? "light" : "dark"} />
+      <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
         <Stack
           screenOptions={{
             headerShown: false,
-            contentStyle: { backgroundColor: "#000000" }
+            contentStyle: { backgroundColor: colors.background }
           }}
         />
-      </DevDiagnosticsRoot>
-    </ThemeProvider>
+      </SafeAreaView>
+    </DevDiagnosticsRoot>
   );
 }

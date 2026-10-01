@@ -2,6 +2,16 @@
 
 ## MVP Features
 
+### Visual design
+
+Status: Native-style overhaul implemented.
+
+- System typography, blue actions, flat grouped surfaces, and automatic light/dark appearances; no glow or neumorphic shadows.
+- Shared styling across Session, exercise search/details, Progress, Programs, Profile, and account forms.
+- Edge-to-edge bottom navigation, native safe areas, visible search focus, compact exercise rows, and high-contrast text.
+- Workout-first Today page, optional on-device training review, and grouped profile/storage details.
+- Weekly consistency display uses real saved workouts and rest days; existing persistence, guest access, and session refresh remain unchanged.
+
 ### Onboarding
 
 Status: In progress.
@@ -29,19 +39,18 @@ Purpose: Let users quickly find and select lifting exercises.
 
 Current capabilities:
 
-- Browse a curated catalog inside the Session exercise picker.
+- Search all 400 bundled free-tier RepDB exercises in the Exercises tab and Session picker.
+- Match names, muscles, equipment, and abbreviations such as DB, BB, and RDL.
+- Combine muscle-group and equipment filters; clear searches and recover from empty results.
 - View catalog exercises in a two-column grid.
 - Show licensed RepDB still images in the selector.
 - Add a custom exercise name when the catalog is missing a movement.
 - Use catalog or custom exercises inside the workout logger.
+- Read exercise instructions and send a library selection directly to the Session logger without replacing an active workout.
 
 Expected capabilities:
 
-- Broader exercise list.
-- Search by name.
-- Filter by muscle group.
-- Filter by equipment.
-- View exercise details.
+- Favorites and recently used exercises.
 
 ### Workout Logger
 
@@ -93,44 +102,46 @@ Expected capabilities:
 
 ### Program Tracking
 
-Status: Planned.
+Status: Editable starter programs, user-created multi-day programs, weekly/cycle scheduling, typed targets, and text/screenshot import prototype implemented.
 
-Purpose: Support structured lifting schedules.
+- Import pasted plans or locally OCR-read screenshots, review source lines, manually match uncertain exercise names, and correct sets/exact reps/ranges/time. Confirm the proposed schedule/rest days in the existing builder before saving. Imports never activate a program or generate workout/streak history. Browser OCR is verified; native OCR requires a rebuilt app and device verification. No video import or LLM yet.
 
-Initial program types:
-
-- Push Pull Legs.
-- Upper Lower.
-- Custom program.
-
-Expected capabilities:
-
-- Pick a program.
-- View weekly schedule.
-- Start today's program workout.
-- Mark rest days.
-- Track program adherence.
+- Create and name a program; add multiple exercises from the 400-exercise RepDB library.
+- Configure 1–12 sets with exact reps, a rep range (1–100), or a timed target (1 second–60 minutes per set). Repeated lifts have independent targets.
+- Drag handles to reorder, including edge auto-scroll; move-up/down buttons provide an accessible alternative.
+- Save and edit programs locally without an account. Canceling edited drafts and deleting saved programs require confirmation.
+- Start a program workout with its saved exercise order and targets. Existing active workouts cannot be replaced.
+- Planned targets do not count as completed sets. The logger captures actual results, preserving chart and streak behavior.
+- Timed work logs actual duration separately from reps and appears in workout history. It counts toward completed workouts/streaks but is excluded from rep-based strength, weight, and volume charts. Logging is manual; a countdown timer is not included.
+- Weekly weekday plans or repeating 1–28-day cycles with a start date and independent exercises, targets, and order for each training day.
+- Choose Training or Rest per day; new days default to Rest. Turn one program on/off with confirmation. Start Session automatically loads today's training exercises from the program; users tap each one to log actual weight, reps/time, and sets. Planned rest protects streaks automatically from activation onward, including days away from the app. Missed training days still break streaks unless manually marked as rest. Existing workouts survive switches and turning a program off.
+- Session shows today's planned workout/recovery. Schedule edits, switches, stops, and deletions preserve earlier rest-day history and workout snapshots created on the current schema. Prelaunch training setups were intentionally reset; old formats are not migrated.
+- Built-in, opt-in starter programs: Push/Pull/Legs (Mon–Sat, Sunday rest), Upper/Lower (Mon/Tue/Thu/Fri, three rest days), and Full Body Every Other Day (A/rest/B/rest, a rolling 4-day cycle). PPL and Upper/Lower cover major groups at least twice weekly; FBEOD covers them 3–4 times weekly with lower per-session volume. All use real RepDB exercises, rep ranges, moderate working sets, and timed planks. Preview every day before creating an editable copy. No weights, completed workouts, or active schedules are seeded; copies save OFF until explicitly activated. Automatic rest never fills missed training days. A full adherence-history calendar is not yet implemented.
 
 ### Streaks
 
-Status: Planned.
+Status: Started.
 
 Purpose: Encourage consistency without punishing recovery.
 
-Expected capabilities:
+Current capabilities:
 
 - Current streak.
+- Muted active/rest day counts for the current streak, counting a date with both a workout and rest once as active.
 - Planned rest days count as maintained consistency.
 - Missed workout days affect streaks.
+
+Expected capabilities:
+
 - Weekly consistency view.
 
 ### Progress Dashboard
 
-Status: Planned.
+Status: Started; original chart dashboard restored.
 
 Purpose: Show strength improvement over time.
 
-Expected capabilities:
+Current capabilities:
 
 - Stock-chart-like progress chart.
 - Time range controls.
@@ -138,6 +149,11 @@ Expected capabilities:
 - Exercise-specific progress.
 - Estimated strength improvements.
 - Personal records.
+- Rep-weighted average weight.
+- Local saved-session data; no account required.
+
+Expected capabilities:
+
 - Program consistency.
 
 ## Later Features
@@ -185,7 +201,8 @@ Storage approach:
 
 Current capabilities:
 
-- Supabase client setup.
+- Optional account setup; core workouts, history, and streaks work without an account or Supabase configuration.
+- Supabase SDK session persistence and automatic token refresh, with migration of previously saved sessions.
 - Email/password sign up and sign in from onboarding.
 - Email confirmation links can open the app callback and complete sign-in when Supabase returns session tokens.
 - Successful auth navigates immediately; social profile, avatar, and local cache writes run in the background.

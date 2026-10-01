@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <rect width="1200" height="800" fill="white" />
+  <g fill="#111" font-family="Arial, sans-serif" font-size="40">
+    <text x="60" y="90">Program: Screenshot test</text>
+    <text x="60" y="180">Monday - Upper</text>
+    <text x="60" y="270">Arnold Press 3 x 8-12</text>
+    <text x="60" y="360">Plank 2 x 45 sec</text>
+    <text x="60" y="480">Tuesday - Rest</text>
+    <text x="60" y="570">Wednesday - Lower</text>
+    <text x="60" y="660">Goblet Squat 4 x 10</text>
+  </g>
+</svg>

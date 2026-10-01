@@ -1,8 +1,12 @@
+import { createThemedStyles } from "../../src/theme/designSystem";
+import { Ionicons } from "@expo/vector-icons";
+import { ScreenHeading } from "../../src/components/ScreenHeading";
 import { Link, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { type User } from "@supabase/supabase-js";
-import { getCurrentAuthSession, signOut } from "../../src/features/social/authRepository";
+import { getCurrentAuthSession, signOut, subscribeToAuthChanges } from "../../src/features/social/authRepository";
+import { isSupabaseConfigured } from "../../src/lib/supabase";
 import {
   getSocialProfileForUserId,
   isValidHandle,
@@ -11,15 +15,19 @@ import {
 } from "../../src/features/social/socialProfilesRepository";
 import { withTimeout } from "../../src/lib/withTimeout";
 import { clearCurrentUserProfileCache, getCurrentUserProfile, upsertUserProfile } from "../../src/storage/profilesRepository";
-import { useAppTheme } from "../../src/theme/ThemeProvider";
+import { useAppTheme, useThemeStyles } from "../../src/theme/ThemeProvider";
 import { UserProfile } from "../../src/types/fitness";
 
 export default function ProfileScreen() {
+  const { styles, colors, ui } = useThemeStyles(themedStyles);
   const theme = useAppTheme();
   const searchParams = useLocalSearchParams<{ authChanged?: string }>();
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [isSignedOut, setIsSignedOut] = useState(false);
+  const [isSignedOut, setIsSignedOut] = useState(true);
   const [statusText, setStatusText] = useState<string | null>(null);
+  const [authRevision, setAuthRevision] = useState(0);
+
+  useEffect(() => subscribeToAuthChanges(() => setAuthRevision((value) => value + 1)), []);
 
   useFocusEffect(
     useCallback(() => {
@@ -33,16 +41,16 @@ export default function ProfileScreen() {
         setIsSignedOut(result.isSignedOut);
         setProfile(result.profile);
         setStatusText(null);
-      }).catch(() => {
+      }).catch((error) => {
         if (isActive) {
-          setStatusText("Could not refresh profile.");
+          setStatusText(error instanceof Error ? error.message : "Could not reconnect your account. Your workouts are still available.");
         }
       });
 
       return () => {
         isActive = false;
       };
-    }, [searchParams.authChanged])
+    }, [searchParams.authChanged, authRevision])
   );
 
   async function handleSignOut() {
@@ -57,11 +65,57 @@ export default function ProfileScreen() {
     }
   }
 
+  if (isSignedOut) {
+    return (
+      <ScrollView style={[styles.screen, { backgroundColor: theme.colors.background }]} contentContainerStyle={styles.content}>
+        <ScreenHeading eyebrow="Orca · On this device" title="Profile" />
+        <View style={styles.header}>
+          <View style={styles.guestIcon}><Ionicons name="person-outline" size={26} color={theme.colors.accent} /></View>
+          <View style={{ flex: 1 }}>
+          <Text style={[styles.title, { color: theme.colors.text }]}>Your training</Text>
+          <Text style={[styles.description, { color: theme.colors.secondaryText }]}>
+            Saved on this device. No account required.
+          </Text>
+          </View>
+        </View>
+        <Text style={styles.sectionLabel}>TRAINING & STORAGE</Text>
+        <View style={styles.settingsGroup}>
+          <InfoRow label="Workout history" value="On this device" first />
+          <InfoRow label="Coach suggestions" value="Review before applying" />
+          <InfoRow label="Scheduled rest" value="Protects your streak" />
+          <InfoRow label="Cloud sync" value="Not enabled" />
+        </View>
+        <Text style={styles.footnote}>Workouts, programs, and progress stay local—even when you sign in.</Text>
+        {statusText ? <Text accessibilityRole="alert" style={[styles.statusText, { color: theme.colors.secondaryText }]}>{statusText}</Text> : null}
+        <Text style={styles.sectionLabel}>OPTIONAL ACCOUNT</Text>
+        <View style={styles.actions}>
+          {isSupabaseConfigured() ? (
+            <>
+              <Link href={{ pathname: "/onboarding", params: { mode: "sign_in" } }} asChild>
+                  <Text style={StyleSheet.flatten([styles.secondaryLink, { borderColor: theme.colors.border, color: theme.colors.accent }])}>
+                  Sign in (optional)
+                </Text>
+              </Link>
+              <Link href={{ pathname: "/onboarding", params: { mode: "sign_up" } }} asChild>
+                  <Text style={StyleSheet.flatten([styles.secondaryLink, { borderColor: theme.colors.border, color: theme.colors.accent }])}>
+                  Create account
+                </Text>
+              </Link>
+            </>
+          ) : (
+            <Text style={[styles.description, { color: theme.colors.secondaryText }]}>Accounts are unavailable in this build. You can keep training here.</Text>
+          )}
+        </View>
+      </ScrollView>
+    );
+  }
+
   return (
     <ScrollView
       style={[styles.screen, { backgroundColor: theme.colors.background }]}
       contentContainerStyle={styles.content}
     >
+      <ScreenHeading eyebrow="Orca · Your account" title="Profile" />
       <View style={styles.header}>
         {profile?.avatarUrl ? (
           <Image source={{ uri: profile.avatarUrl }} style={[styles.avatar, { borderColor: theme.colors.border }]} />
@@ -73,15 +127,14 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>You</Text>
-        <Text style={[styles.title, { color: theme.colors.text }]}>Profile</Text>
+        <View style={{ flex: 1 }}><Text style={[styles.title, { color: theme.colors.text }]}>{profile?.displayName ?? "Your profile"}</Text>
         <Text style={[styles.description, { color: theme.colors.secondaryText }]}>
           {isSignedOut
             ? "Sign in to manage your profile."
             : profile?.handle
               ? `@${profile.handle} / ${formatProfileValue(profile.profileVisibility)}`
               : "Finish setting up your profile."}
-        </Text>
+        </Text></View>
       </View>
 
       <View style={[styles.panel, { borderColor: theme.colors.border }]}>
@@ -100,10 +153,19 @@ export default function ProfileScreen() {
               }
             ]}
           >
+            <Text style={styles.rowLabel}>{["Name", "Handle", "Visibility"][index]}</Text>
             <Text style={[styles.highlightText, { color: theme.colors.secondaryText }]}>{item}</Text>
           </View>
         ))}
       </View>
+
+      <Text style={styles.sectionLabel}>TRAINING & STORAGE</Text>
+      <View style={styles.settingsGroup}>
+        <InfoRow label="Workout history" value="On this device" first />
+        <InfoRow label="Coach suggestions" value="Review before applying" />
+        <InfoRow label="Cloud sync" value="Not enabled" />
+      </View>
+      <Text style={styles.footnote}>Signing in manages your profile. Your workout history and programs remain on this device.</Text>
 
       {statusText ? <Text style={[styles.statusText, { color: theme.colors.secondaryText }]}>{statusText}</Text> : null}
 
@@ -144,6 +206,11 @@ export default function ProfileScreen() {
       )}
     </ScrollView>
   );
+}
+
+function InfoRow({ label, value, first = false }: { label: string; value: string; first?: boolean }) {
+  const { styles } = useThemeStyles(themedStyles);
+  return <View style={[styles.settingsRow, first && { borderTopWidth: 0 }]}><Text style={styles.rowLabel}>{label}</Text><Text style={styles.rowValue}>{value}</Text></View>;
 }
 
 async function refreshProfile(
@@ -281,84 +348,102 @@ function formatProfileValue(value: string) {
     .join(" ");
 }
 
-const styles = StyleSheet.create({
+const themedStyles = createThemedStyles((colors, ui) => ({
+  sectionLabel: { color: colors.mutedText, fontSize: 12, fontWeight: "500", letterSpacing: 0.7, marginTop: 28, marginBottom: 10, paddingHorizontal: 4 },
+  settingsGroup: { ...ui.group, paddingHorizontal: 16 },
+  settingsRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 14, paddingVertical: 17, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  rowLabel: { color: colors.text, fontSize: 15, flexShrink: 1 },
+  rowValue: { color: colors.mutedText, fontSize: 13, textAlign: "right", flexShrink: 1, maxWidth: "53%" },
+  footnote: { color: colors.mutedText, fontSize: 12, lineHeight: 19, marginTop: 10, paddingHorizontal: 4 },
+  guestIcon: { backgroundColor: colors.accentSoft, width: 56, height: 56, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   actions: {
-    gap: 10,
-    marginTop: 22,
-    maxWidth: 380,
+    ...ui.group,
+    overflow: "hidden",
+    marginTop: 8,
+    maxWidth: 720,
     width: "100%"
   },
   avatar: {
     borderRadius: 42,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 3,
     height: 84,
-    width: 84
+    width: 84,
+    borderColor: colors.surface,
   },
   avatarFallback: {
+    ...ui.input,
     alignItems: "center",
     borderRadius: 42,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
     height: 84,
     justifyContent: "center",
     width: 84
   },
   avatarInitial: {
     fontSize: 30,
-    fontWeight: "900"
+    fontWeight: "700"
   },
   content: {
-    alignItems: "center",
-    paddingBottom: 118,
-    paddingHorizontal: 24,
-    paddingTop: 72
+    ...ui.content,
+    alignItems: "stretch",
   },
   description: {
-    fontSize: 15,
-    fontWeight: "700",
-    lineHeight: 22,
-    marginTop: 12,
+    fontSize: 14,
+    fontWeight: "400",
+    lineHeight: 23,
+    marginTop: 5,
     maxWidth: 340,
-    textAlign: "center"
+    textAlign: "left"
   },
   eyebrow: {
     fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0,
+    fontWeight: "600",
+    letterSpacing: 1.3,
     marginTop: 18,
     textAlign: "center",
-    textTransform: "uppercase"
+    textTransform: "uppercase",
   },
   header: {
+    ...ui.group,
     alignItems: "center",
-    width: "100%"
+    flexDirection: "row",
+    gap: 16,
+    width: "100%",
+    padding: 18,
   },
   highlightRow: {
     alignItems: "center",
-    paddingVertical: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 16,
+    paddingVertical: 17,
     width: "100%"
   },
   highlightText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "400",
     lineHeight: 20,
-    textAlign: "center",
-    textTransform: "uppercase"
+    textAlign: "right",
+    flexShrink: 1,
+    textTransform: "none"
   },
   link: {
-    fontSize: 14,
-    fontWeight: "900",
+    ...ui.primary,
+    fontSize: 15,
+    fontWeight: "600",
     minHeight: 52,
-    overflow: "hidden",
+    overflow: "visible",
     paddingHorizontal: 18,
     paddingVertical: 16,
     textAlign: "center",
-    textTransform: "uppercase",
+    textTransform: "none",
     width: "100%"
   },
   panel: {
-    borderWidth: StyleSheet.hairlineWidth,
+    ...ui.group,
+    borderWidth: 0,
     marginTop: 28,
-    maxWidth: 380,
+    maxWidth: 720,
     paddingHorizontal: 20,
     width: "100%"
   },
@@ -366,45 +451,48 @@ const styles = StyleSheet.create({
     flex: 1
   },
   secondaryLink: {
-    borderWidth: StyleSheet.hairlineWidth,
-    fontSize: 14,
-    fontWeight: "900",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    fontSize: 15,
+    fontWeight: "500",
     minHeight: 52,
-    overflow: "hidden",
+    overflow: "visible",
     paddingHorizontal: 18,
     paddingVertical: 16,
-    textAlign: "center",
-    textTransform: "uppercase",
+    textAlign: "left",
+    textTransform: "none",
     width: "100%"
   },
   signOutButton: {
+    ...ui.control,
     alignItems: "center",
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
     justifyContent: "center",
     minHeight: 48,
     paddingHorizontal: 18,
-    width: "100%"
+    width: "100%",
+    borderRadius: 18,
   },
   signOutText: {
     fontSize: 13,
-    fontWeight: "900",
+    fontWeight: "700",
     textAlign: "center",
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   statusText: {
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "600",
     lineHeight: 18,
     marginTop: 18,
     textAlign: "center",
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   title: {
-    fontSize: 36,
-    fontWeight: "800",
-    letterSpacing: 0,
-    marginTop: 8,
-    textAlign: "center",
-    textTransform: "uppercase"
+    fontSize: 21,
+    fontWeight: "600",
+    letterSpacing: -0.7,
+    marginTop: 0,
+    textAlign: "left",
+    textTransform: "none"
   }
-});
+}));

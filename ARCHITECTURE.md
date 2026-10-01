@@ -13,6 +13,15 @@ Recommended baseline:
 - Local-first storage for the MVP
 - Later managed backend with Supabase for auth, friends, feed events, and optional sync
 
+## Visual System
+
+- The Native visual system lives in `src/theme/designSystem.ts`: blue actions, system typography, flat grouped surfaces, and semantic text/field colors for both light and dark appearances. `ThemeProvider` follows the device appearance and updates the status bar.
+- `createThemedStyles` builds both style sheets once; components select them with `useThemeStyles`. Shared `ui.group`, `ui.control`, `ui.input`, and `ui.primary` surfaces have no decorative shadows or glow. Explicit selected and keyboard-focus states remain visible.
+- Root safe areas and bounded content widths support phone and tablet/web layouts. The edge-to-edge bottom bar occupies layout space, includes the bottom safe-area inset, and hides for the keyboard; screen content needs no floating-bar spacer.
+- `ScreenHeading` unifies screen hierarchy; `StreakCard` presents actual local activity for the current week, including rest days. No activity is fabricated for decoration.
+- Programs shows opt-in starter templates and user-saved programs, with themed schedule, target, import, and coaching editors. Browsing starters never writes to the user's library.
+- Palette tests enforce at least 4.5:1 contrast for normal text and selected controls in both appearances, including grouped surfaces and input fields. This visual update does not modify data schemas, auth behavior, or coaching rules.
+
 ## App Shape
 
 The app should be organized by feature modules, not by generic technical layers alone.
@@ -69,9 +78,11 @@ Owns the exercise library, muscle groups, equipment metadata, and exercise selec
 
 Current notes:
 
-- The Session picker uses a curated subset of RepDB free-tier exercise stills.
+- The Exercises tab and Session picker share a virtualized, searchable browser for all 400 bundled RepDB free-tier exercises.
+- Search is local, token-based, and matches names, muscles, equipment, and common abbreviations; muscle-group and equipment filters combine with the query.
+- The static `repdbImages.ts` map bundles free-tier stills for offline use. The supplied license and visible RepDB attribution are retained; no paid preview animations are used.
 - RepDB assets are stored locally under `apps/mobile/assets/repdb`.
-- Catalog images are shown in the exercise selector only.
+- Catalog images appear in the browser, exercise details, and chart lift picker. Exercise details expose the bundled instructions and can open the selected lift in an existing or new local session.
 - Users can create a custom exercise by entering a name when the catalog does not include the movement.
 
 ### Workouts
@@ -81,7 +92,7 @@ Owns active workout logging, workout session state, set entries, exercise order,
 Current Session flow:
 
 - The bottom tab is labeled `Session`.
-- `Start Session` opens an active session log.
+- `Start Session` opens or resumes an active session log via `createWorkoutSession({ followActiveProgram: true })`. New sessions resolve the active program and current local weekday/cycle day in storage, snapshot its exercises if it is a training day, and otherwise start unplanned. Explicit day launches remain separate. Creation finishes before logging opens; read/write failures stay on the start screen with a retryable error instead of silently dropping the plan.
 - `Add Exercise` appears after already logged exercises and opens the exercise picker.
 - Saving an exercise appends it to the active session log in chronological order.
 - Save Session marks the workout session completed after at least one exercise has been logged.
@@ -93,15 +104,31 @@ Current Session flow:
 
 ### Programs
 
-Owns structured training plans such as Push Pull Legs, Upper Lower, and custom schedules.
+Owns locally saved, user-created multi-day programs with weekly/cycle schedules.
+
+- `starterPrograms.ts` defines three offline, moderate-volume templates using stable RepDB IDs. Its pure factory resolves current catalog names and generates fresh day/exercise IDs and nested targets for each unsaved copy. `StarterProgramLibrary` previews all training/rest days; Use opens the ordinary builder, Save persists a copy OFF, and the existing explicit activation path controls automatic queue/rest behavior. No storage migration, auto-seeding, or load guesses are involved. FBEOD is a rolling 4-day cycle, not a weekly reset. Regression tests cover real catalog membership, direct-muscle frequency/volume, cloning, rest protection, and missed-training-day streak breaks in both storage implementations.
+
+- `programModel.ts` defines ordered, uniquely identified exercises with set counts and discriminated per-set targets: exact reps, rep ranges, or integer-second durations. Shared validation/formatting, immutable reorder helpers, and workout snapshots preserve the distinction between prescriptions and actual results. Storage readers upgrade exact-rep fields in the current scheduled format only.
+- `ProgramsScreen` supports create/edit/delete confirmation and multi-add search through the existing RepDB library. `ProgramExerciseList` uses measured rows, drag handles, edge auto-scroll, and accessible move buttons; duplicate lifts remain separate entries.
+- `programsRepository.ts` atomically stores the multi-day library and dated active-schedule revisions in a single SQLite `program_library` row or web `orca9.programLibrary.v3` value, with serialized writes. Invalid current data is reported, never silently overwritten. There is no legacy program parsing or fallback.
+- Database v6 is a user-requested prelaunch reset: versions below 6 transactionally drop/recreate training tables, remove the obsolete `training_programs` table, and preserve `user_profiles`. The web `trainingStorage.ts` initializer removes only known training keys, then records `orca9.trainingSchemaVersion = 6`. Concurrent reads/writes await that one initializer, failed resets can retry, and future launches preserve new training data. Auth keys and `.env` are untouched. This is a destructive prelaunch cutover, not a production data migration.
+- Programs contain weekly or repeating-cycle schedules (1–28 calendar days), a start date, and ordered Training/Rest slots only; new slots default to Rest. Each training slot has its own exercises and targets. One active schedule generates rest dates from revisions, bounded by activation/start dates, the next revision, and today. Edits/stops/deletes affect today onward only. Civil-date arithmetic avoids DST drift.
+- Starting a program snapshots its order and goals into an empty workout. Existing sessions are protected. Planned exercises prefill the logger but are counted only after actual results are saved; deleting/editing a template cannot change an active workout snapshot.
+- Database v7 adds nullable `set_entries.duration_seconds` transactionally for existing v6 installs, without repeating the prelaunch reset. Web stores optional `durationSeconds` alongside actual set results. Timed sets have zero reps, are excluded from all rep-based chart queries, and contribute actual timed-work totals to history. Reps/duration/weight are validated before writes; logged values apply to every set in an entry.
 
 ### Streaks
 
 Owns streak rules, including rest-day-aware streaks. A planned rest day should count as maintaining consistency instead of requiring a fake workout check-in.
 
+`calculateStreakSummary` also returns `currentActiveDays` and `currentRestDays` for the muted streak subtitle. It classifies each distinct date in the current streak once, prioritizing completed workouts over overlapping manual/scheduled rest. These counts sum to `currentStreak`; older broken runs and future dates are excluded.
+
 ### Progress
 
 Owns charts and strength trends, including stock-chart-like visualizations of total lifting progress.
+
+- Restored the dashboard from `progress-dashboard-charts` without replacing the current auth, workout history, database, or streak implementation.
+- PRs (estimated one-rep max), rep-weighted average weight, and volume read completed local sessions on web and native SQLite.
+- Supports all lifts or an individual saved lift, 1M/3M/All ranges, focus refresh, and stale-request protection. No account is required.
 
 ### Integrations
 
@@ -129,6 +156,8 @@ Planned backend shape:
 
 Current auth/profile shape:
 
+- Accounts are optional for the core app. Importing routes never initializes Supabase; missing configuration leaves workouts, history, and rest-day streaks usable.
+- One lazily created Supabase SDK client owns AsyncStorage session persistence, token refresh, confirmation callbacks, and authenticated storage uploads. Legacy custom sessions migrate once into its project-scoped storage key.
 - Email/password auth.
 - Unique lowercase `@handle` values, 3-24 characters using letters, numbers, and underscores; handle changes are not exposed after creation.
 - Display name and uploaded profile picture.
@@ -165,6 +194,7 @@ WorkoutSession
   startedAt
   completedAt
   programDayId?
+  programPlan? (immutable program/targets snapshot)
   exercises
   notes
 
@@ -173,6 +203,7 @@ WorkoutExercise
   exerciseId
   customExerciseName?
   exerciseNameSnapshot
+  programEntryId?
   order
   sets
   savedAt
@@ -184,13 +215,21 @@ SetEntry
   setNumber
   completedAt
 
-Program
+TrainingProgram
   id
   name
-  scheduleType
-  days
+  exercises (ordered ProgramExercise array)
+  createdAt
+  updatedAt
 
-ProgramDay
+ProgramExercise
+  id (unique per occurrence, even for repeated lifts)
+  exerciseId
+  exerciseName
+  sets
+  repGoal
+
+ProgramDay (planned)
   id
   name
   targetMuscles
@@ -292,6 +331,12 @@ The progress dashboard can borrow the feel of a stock chart:
 - Metrics such as total volume, estimated one-rep max, personal records, and completion rate.
 
 ## Cross-Platform Notes
+
+### Program import boundary
+
+`ProgramImportScreen` keeps source text/images and corrections in memory. `importProgram.ts` is a pure bounded parser with unique normalized RepDB matches; ambiguous names and missing/unsupported targets require user correction. Platform-specific OCR adapters use Tesseract.js workers on web and the local `modules/orca-ocr` Expo bridge (Apple Vision / bundled Latin ML Kit) on native. Browser OCR assets come from versioned jsDelivr URLs; source images are not uploaded. Native module lookup is optional so Expo Go continues to support text imports without crashing.
+
+The only persistence handoff is a reviewed `ProgramDraft` into the existing builder and program repository. Fresh IDs, normal validation, and explicit schedule/rest confirmation precede saving. Import code does not call workout, streak, activation, Supabase or sync repositories. No schema change or reset is needed.
 
 Build shared core UI and business logic wherever possible.
 

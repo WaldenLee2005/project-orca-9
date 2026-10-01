@@ -18,6 +18,13 @@ web-build/
 android/
 ios/
 
+# Local Expo module source is not generated app build output.
+!apps/mobile/modules/orca-ocr/android/
+!apps/mobile/modules/orca-ocr/ios/
+apps/mobile/modules/orca-ocr/android/.gradle/
+apps/mobile/modules/orca-ocr/android/build/
+apps/mobile/modules/orca-ocr/ios/build/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
@@ -26,4 +33,3 @@ pnpm-debug.log*
 
 # Local scratch data
 repdb-preview/
-

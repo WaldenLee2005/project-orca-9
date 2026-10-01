@@ -1,9 +1,10 @@
+import { createThemedStyles } from "../../src/theme/designSystem";
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
-  Image,
-  LayoutChangeEvent,
+  AppState,
   PanResponder,
   Platform,
   TextInput,
@@ -26,9 +27,23 @@ import {
   getActiveWorkoutSession,
   getCompletedWorkoutSessions,
   CompletedWorkoutSession,
-  StoredSessionExercise
+  StoredSessionExercise,
+  validateActualSets,
+  getActualSets,
+  type WorkoutSet
 } from "../../src/storage/workoutsRepository";
-import { useAppTheme } from "../../src/theme/ThemeProvider";
+import { getStreakSummary, markTodayAsRestDay, StreakSummary } from "../../src/storage/streaksRepository";
+import { useAppTheme, useThemeStyles } from "../../src/theme/ThemeProvider";
+import { ExerciseBrowser } from "../../src/features/exercises/ExerciseBrowser";
+import { ScreenHeading } from "../../src/components/ScreenHeading";
+import { StreakCard } from "../../src/components/StreakCard";
+import { formatProgramPrescription, formatDuration, getPendingProgramExercises, getProgramDayName, getScheduledDayIndex, localDateKey, toWorkoutProgramPlan, type ProgramExercise, type WorkoutProgramPlan, type TrainingProgram } from "../../src/features/programs/programModel";
+import { getProgramLibrary, getTrainingProgram } from "../../src/storage/programsRepository";
+
+import { CoachedSetLogger } from "../../src/features/coach/CoachedSetLogger";
+import { ReadinessCheck } from "../../src/features/coach/CoachControls";
+import { CoachOverview } from "../../src/features/coach/CoachOverview";
+import { DEFAULT_READINESS, type Readiness } from "../../src/features/coach/coachModel";
 
 type SessionStep = "start" | "active" | "picker" | "custom" | "logger";
 
@@ -37,7 +52,19 @@ type SessionLogEntry = StoredSessionExercise;
 const supportsNativeAnimatedDriver = Platform.OS !== "web";
 
 export default function WorkoutsScreen() {
+  const { styles, colors, ui } = useThemeStyles(themedStyles);
   const theme = useAppTheme();
+  const router = useRouter();
+  const { exerciseId, programId, programDayId } = useLocalSearchParams<{ exerciseId?: string; programId?: string; programDayId?: string }>();
+  const handledExerciseRequest = useRef<string | null>(null);
+  const handledProgramRequest = useRef<string | null>(null);
+  const savingExercise = useRef(false);
+  const startingSession = useRef(false);
+  const [isStartingSession, setIsStartingSession] = useState(false);
+  const [isSavingExercise, setIsSavingExercise] = useState(false);
+  const [programPlan, setProgramPlan] = useState<WorkoutProgramPlan | null>(null);
+  const [selectedProgramEntryId, setSelectedProgramEntryId] = useState<string | null>(null);
+  const [isSessionReady, setIsSessionReady] = useState(false);
   const [step, setStep] = useState<SessionStep>("start");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null);
@@ -46,18 +73,13 @@ export default function WorkoutsScreen() {
   const [storageError, setStorageError] = useState<string | null>(null);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [isSavingSession, setIsSavingSession] = useState(false);
+  const [streak, setStreak] = useState<StreakSummary | null>(null);
+  const [scheduledProgram, setScheduledProgram] = useState<TrainingProgram | null>(null);
+  const [scheduleDate, setScheduleDate] = useState(localDateKey());
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [selectedExercise, setSelectedExercise] = useState<SessionExercise | null>(null);
   const [customExerciseName, setCustomExerciseName] = useState("");
-  const [sets, setSets] = useState(3);
-  const [reps, setReps] = useState(8);
-  const [weight, setWeight] = useState(135);
-
-  const categories = useMemo(() => {
-    return sessionExercises.reduce<Record<string, SessionExercise[]>>((groups, exercise) => {
-      groups[exercise.category] = [...(groups[exercise.category] ?? []), exercise];
-      return groups;
-    }, {});
-  }, []);
+  const [readiness, setReadiness] = useState<Readiness>({ ...DEFAULT_READINESS });
 
   useEffect(() => {
     let isMounted = true;
@@ -75,6 +97,7 @@ export default function WorkoutsScreen() {
         setSessionId(activeSession.id);
         setSessionStartedAt(activeSession.startedAt);
         setLoggedExercises(activeSession.exercises);
+        setProgramPlan(activeSession.programPlan ?? null);
         setStep("active");
       })
       .catch((error) => {
@@ -82,12 +105,99 @@ export default function WorkoutsScreen() {
         if (isMounted) {
           setStorageError("Could not load your saved session.");
         }
+      })
+      .finally(() => {
+        if (isMounted) setIsSessionReady(true);
       });
 
     return () => {
       isMounted = false;
     };
   }, []);
+
+  useFocusEffect(useCallback(() => {
+    let active = true, lastDate = localDateKey();
+    async function refresh() {
+      try {
+        const [summary, library] = await Promise.all([getStreakSummary(), getProgramLibrary()]);
+        if (!active) return;
+        setStreak(summary); setScheduleDate(localDateKey()); setScheduleError(null);
+        setScheduledProgram(library.programs.find((program) => program.id === library.activeProgramId) ?? null);
+      } catch { if (active) setScheduleError("Could not refresh your schedule and streak. Return to this tab to retry."); }
+    }
+    void refresh();
+    const subscription = AppState.addEventListener("change", (state) => { if (state === "active") { setReadiness({ ...DEFAULT_READINESS }); void refresh(); } });
+    const timer = setInterval(() => { const today = localDateKey(); if (today !== lastDate) { lastDate = today; setReadiness({ ...DEFAULT_READINESS }); void refresh(); } }, 30000);
+    return () => { active = false; subscription.remove(); clearInterval(timer); };
+  }, []));
+
+  useEffect(() => {
+    if (!exerciseId) {
+      handledExerciseRequest.current = null;
+      return;
+    }
+    if (!isSessionReady || handledExerciseRequest.current === exerciseId) return;
+    handledExerciseRequest.current = exerciseId;
+    const exercise = sessionExercises.find((item) => item.id === exerciseId);
+    router.setParams({ exerciseId: undefined });
+    if (!exercise) return;
+
+    // Wait for restoration before opening a library selection; never replace an active session.
+    async function openExercise() {
+      if (!sessionStartedAt && !await startSession()) return;
+      selectExercise(exercise!);
+    }
+    void openExercise();
+  }, [exerciseId, isSessionReady]);
+
+  useEffect(() => {
+    if (!programId) { handledProgramRequest.current = null; return; }
+    const requestKey = `${programId}:${programDayId ?? "today"}`;
+    if (!isSessionReady || handledProgramRequest.current === requestKey) return;
+    handledProgramRequest.current = requestKey;
+    router.setParams({ programId: undefined, programDayId: undefined });
+    async function openProgram() {
+      try {
+        const program = await getTrainingProgram(programId!);
+        if (!program) throw new Error("That program no longer exists. Create or select another program.");
+        const session = await createWorkoutSession({ programPlan: toWorkoutProgramPlan(program, programDayId) });
+        setSessionId(session.id);
+        setSessionStartedAt(session.startedAt);
+        setLoggedExercises(session.exercises);
+        setProgramPlan(session.programPlan ?? null);
+        setSelectedExercise(null);
+        setSelectedProgramEntryId(null);
+        setStorageError(null);
+        setSessionNotice(null);
+        setStep("active");
+      } catch (error) {
+        setStorageError(error instanceof Error ? error.message : "Could not start that program. Please try again.");
+      }
+    }
+    void openProgram();
+  }, [programId, programDayId, isSessionReady]);
+
+  const pendingProgramExercises = getPendingProgramExercises(programPlan, loggedExercises);
+  const scheduledDay = scheduledProgram?.days[getScheduledDayIndex(scheduledProgram.schedule, scheduledProgram.days.length, scheduleDate)];
+
+  async function loadStreak() {
+    try {
+      setStreak(await getStreakSummary());
+    } catch (error) {
+      console.warn("Could not load streak summary", error);
+    }
+  }
+
+  async function saveRestDay() {
+    try {
+      await markTodayAsRestDay();
+      await loadStreak();
+      setSessionNotice("Rest day logged. Your streak is protected.");
+    } catch (error) {
+      console.warn("Could not save rest day", error);
+      setStorageError("Could not save today as a rest day.");
+    }
+  }
 
   async function loadPreviousSessions() {
     const operation = trackDevOperation("Load previous workout sessions", "Checking completed local workout sessions.");
@@ -102,34 +212,49 @@ export default function WorkoutsScreen() {
   }
 
   async function startSession() {
-    const localStartedAt = new Date().toISOString();
-
+    if (startingSession.current || !isSessionReady) return false;
+    startingSession.current = true;
+    setIsStartingSession(true);
     setStorageError(null);
     setSessionNotice(null);
-    setSessionId(null);
-    setSessionStartedAt(localStartedAt);
-    setLoggedExercises([]);
-    setSelectedExercise(null);
-    setStep("active");
 
-    const operation = trackDevOperation("Create workout session", "Opening a new local workout session.");
+    const operation = trackDevOperation("Create workout session", "Opening today's active-program workout or an unplanned session.");
 
     try {
-      const session = await createWorkoutSession();
+      const session = await createWorkoutSession({ followActiveProgram: true });
       setSessionId(session.id);
       setSessionStartedAt(session.startedAt);
+      setLoggedExercises(session.exercises);
+      setProgramPlan(session.programPlan ?? null);
+      setSelectedExercise(null);
+      setSelectedProgramEntryId(null);
+      setStep("active");
       operation.resolve(`Created ${session.id}.`);
+      return true;
     } catch (error) {
       operation.fail(error);
-      setStorageError("Session is active, but it could not be saved locally yet.");
+      setStorageError(error instanceof Error ? error.message : "Could not open your session. Please try again.");
+      return false;
+    } finally {
+      startingSession.current = false;
+      setIsStartingSession(false);
     }
   }
 
   function selectExercise(exercise: SessionExercise) {
+    setSelectedProgramEntryId(null);
     setSelectedExercise(exercise);
-    setSets(3);
-    setReps(8);
-    setWeight(135);
+    setReadiness((current) => ({ ...current, sameEquipment: false }));
+    setStep("logger");
+  }
+
+  function selectProgramExercise(entry: ProgramExercise) {
+    const exercise = sessionExercises.find((item) => item.id === entry.exerciseId);
+    if (!exercise) { setStorageError(`${entry.exerciseName} is no longer in the exercise library. Edit the program to replace it.`); return; }
+    setSelectedExercise(exercise);
+    setSelectedProgramEntryId(entry.id);
+    setReadiness((current) => ({ ...current, sameEquipment: false }));
+    setStorageError(null);
     setStep("logger");
   }
 
@@ -175,10 +300,16 @@ export default function WorkoutsScreen() {
     }
   }
 
-  async function saveExerciseToSession() {
-    if (!selectedExercise) {
+  async function saveExerciseToSession(actualSets: WorkoutSet[]) {
+    if (!selectedExercise || savingExercise.current) {
       return;
     }
+    const measurement = { sets: actualSets.length, reps: actualSets[0]?.reps, weight: actualSets[0]?.weight, durationSeconds: actualSets[0]?.durationSeconds ?? null,
+      actualSets, prescription: programPlan?.exercises.find((item) => item.id === selectedProgramEntryId) };
+    try { validateActualSets(actualSets); }
+    catch (error) { setStorageError((error as Error).message); return; }
+    savingExercise.current = true;
+    setIsSavingExercise(true);
 
     if (!sessionId) {
       setLoggedExercises((current) => [
@@ -186,16 +317,18 @@ export default function WorkoutsScreen() {
         {
           id: `local-workout-exercise-${Date.now()}`,
           exercise: selectedExercise,
-          sets,
-          reps,
-          weight,
-          savedAt: new Date().toISOString()
+          ...measurement,
+          savedAt: new Date().toISOString(),
+          programEntryId: selectedProgramEntryId
         }
       ]);
       setSessionNotice(null);
       setStorageError("Exercise saved for this app session only. Local storage is still unavailable.");
       setSelectedExercise(null);
+      setSelectedProgramEntryId(null);
       setStep("active");
+      savingExercise.current = false;
+      setIsSavingExercise(false);
       return;
     }
 
@@ -205,9 +338,8 @@ export default function WorkoutsScreen() {
       const storedExercise = await addExerciseToWorkoutSession({
         sessionId,
         exercise: selectedExercise,
-        sets,
-        reps,
-        weight
+        ...measurement,
+        programEntryId: selectedProgramEntryId
       });
 
       if (storedExercise) {
@@ -217,11 +349,15 @@ export default function WorkoutsScreen() {
       setSessionNotice(null);
       setStorageError(null);
       setSelectedExercise(null);
+      setSelectedProgramEntryId(null);
       setStep("active");
       operation.resolve(storedExercise ? `Saved ${storedExercise.id}.` : "Repository returned no exercise.");
     } catch (error) {
       operation.fail(error);
       setStorageError("Could not save that exercise.");
+    } finally {
+      savingExercise.current = false;
+      setIsSavingExercise(false);
     }
   }
 
@@ -255,7 +391,11 @@ export default function WorkoutsScreen() {
           exercise: entry.exercise,
           sets: entry.sets,
           reps: entry.reps,
-          weight: entry.weight
+          weight: entry.weight,
+          durationSeconds: entry.durationSeconds ?? null,
+          actualSets: entry.actualSets,
+          prescription: entry.prescription,
+          programEntryId: entry.programEntryId
         });
       }
 
@@ -264,9 +404,13 @@ export default function WorkoutsScreen() {
       setSessionStartedAt(null);
       setLoggedExercises([]);
       setSelectedExercise(null);
+      setSelectedProgramEntryId(null);
+      setProgramPlan(null);
       setStorageError(null);
       setSessionNotice("Session saved.");
+      setReadiness({ ...DEFAULT_READINESS });
       await loadPreviousSessions();
+      await loadStreak();
       setStep("start");
       operation.resolve(`Completed ${resolvedSessionId}.`);
     } catch (error) {
@@ -284,12 +428,13 @@ export default function WorkoutsScreen() {
         style={[styles.screen, { backgroundColor: theme.colors.background }]}
         contentContainerStyle={styles.startContent}
       >
+        <ScreenHeading eyebrow={new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} title="Today" />
         <View style={styles.startHero}>
           <View style={styles.startHeader}>
-            <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>Today</Text>
-            <Text style={[styles.startTitle, { color: theme.colors.text }]}>Session</Text>
-            <Text style={[styles.startCopy, { color: theme.colors.secondaryText }]}> 
-              Start a lift, add exercises as you work, and keep every saved set in order.
+            <View style={styles.heroTopRow}><Text style={[styles.eyebrow, { color: theme.colors.mutedText }]}>{scheduledProgram ? "YOUR PROGRAM" : "YOUR SESSION"}</Text><Ionicons name="calendar-outline" size={20} color={theme.colors.mutedText} /></View>
+            <Text style={[styles.startTitle, { color: theme.colors.text }]}>{scheduledDay && scheduledProgram ? getProgramDayName(scheduledProgram, scheduledDay) : "Ready to train?"}</Text>
+            <Text style={[styles.startCopy, { color: theme.colors.secondaryText }]}>
+              {scheduledDay?.kind === "training" ? `${scheduledProgram!.name} · ${scheduledDay.exercises.length} exercises · ${scheduledDay.exercises.reduce((sum, entry) => sum + entry.sets, 0)} sets` : scheduledDay?.kind === "rest" ? "Scheduled recovery. Your streak is protected. You can still start an extra workout." : scheduledProgram ? `Your program starts ${scheduledProgram.schedule.startDate}. Until then, you can log an unplanned workout.` : "Choose your exercises and record each completed set. No account required."}
             </Text>
             {sessionNotice ? <Text style={[styles.noticeText, { color: theme.colors.secondaryText }]}>{sessionNotice}</Text> : null}
             {storageError ? <Text style={[styles.errorText, { color: theme.colors.accent }]}>{storageError}</Text> : null}
@@ -297,6 +442,7 @@ export default function WorkoutsScreen() {
 
           <Pressable
             accessibilityRole="button"
+            disabled={!isSessionReady || isStartingSession}
             onPress={startSession}
             style={({ pressed }) => [
               styles.primaryButton,
@@ -307,22 +453,27 @@ export default function WorkoutsScreen() {
             ]}
           >
             <Ionicons name="play" size={18} color={theme.colors.onAccent} />
-            <Text style={[styles.primaryButtonText, { color: theme.colors.onAccent }]}>Start Session</Text>
+            <Text style={[styles.primaryButtonText, { color: theme.colors.onAccent }]}>{isStartingSession ? "Opening workout…" : isSessionReady ? scheduledDay?.kind === "rest" ? "Start an extra workout" : "Start workout" : "Loading session…"}</Text>
           </Pressable>
 
-          <View style={[styles.startStats, { borderColor: theme.colors.border }]}> 
-            {["Start", "Add exercise", "Save stats"].map((item) => (
-              <View key={item} style={styles.startStatItem}>
-                <Text style={[styles.startStatText, { color: theme.colors.secondaryText }]}>{item}</Text>
-              </View>
-            ))}
-          </View>
         </View>
+
+        {scheduledDay?.kind === "training" ? <View style={styles.plannedSection}>
+          <View style={styles.heroTopRow}><Text style={styles.programQueueTitle}>Planned exercises</Text><Text style={styles.programQueueHint}>Today</Text></View>
+          <View style={styles.plannedGroup}>{scheduledDay.exercises.map((entry, index) => <View key={entry.id} style={[styles.plannedRow, index > 0 && styles.rowDivider]}>
+            <View style={{ flex: 1, gap: 5 }}><Text style={styles.programQueueName}>{entry.exerciseName}</Text><Text style={styles.programQueueHint}>{formatProgramPrescription(entry)}</Text></View>
+          </View>)}</View>
+        </View> : null}
+        <Pressable accessibilityRole="button" onPress={() => router.push("/programs")} style={styles.scheduleLink}>
+          <Text style={styles.scheduleLinkText}>{scheduledProgram ? "View program schedule" : "Set up a training program"}</Text><Ionicons name="chevron-forward" size={16} color={colors.accent} />
+        </Pressable>
+        {scheduleError ? <Text accessibilityRole="alert" style={styles.storageError}>{scheduleError}</Text> : null}
+        <CoachOverview />
+        <StreakCard streak={streak} onRest={saveRestDay} />
 
         <View style={styles.previousSessionsSection}>
           <View style={styles.previousSessionsHeader}>
-            <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>Saved</Text>
-            <Text style={[styles.previousSessionsTitle, { color: theme.colors.text }]}>Previous Sessions</Text>
+            <Text style={[styles.previousSessionsTitle, { color: theme.colors.text }]}>Recent sessions</Text>
           </View>
 
           {previousSessions.length === 0 ? (
@@ -350,15 +501,35 @@ export default function WorkoutsScreen() {
         contentContainerStyle={styles.activeContent}
       >
         <View style={styles.activeHeader}>
-          <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>Active Session</Text>
-          <Text style={[styles.activeTitle, { color: theme.colors.text }]}>Session Log</Text>
-          <Text style={[styles.activeMeta, { color: theme.colors.secondaryText }]}> 
+          <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>{programPlan ? "Program session" : "Active Session"}</Text>
+          <Text style={[styles.activeTitle, { color: theme.colors.text }]}>{programPlan?.programName ?? "Session Log"}</Text>
+          {programPlan?.dayName ? <Text style={styles.programQueueHint}>{programPlan.dayName}</Text> : null}
+          <Text style={[styles.activeMeta, { color: theme.colors.secondaryText }]}>
             Started {sessionStartedAt ? formatSessionTime(new Date(sessionStartedAt)) : "now"} / {loggedExercises.length} saved
           </Text>
           {storageError ? <Text style={[styles.errorText, { color: theme.colors.accent }]}>{storageError}</Text> : null}
         </View>
 
+        {programPlan ? <View style={styles.programQueue}>
+          <Text style={styles.programQueueTitle}>{pendingProgramExercises.length ? "Your planned exercises" : "All planned exercises logged."}</Text>
+          <Text style={styles.programQueueHint}>{programPlan.exercises.length - pendingProgramExercises.length} of {programPlan.exercises.length} logged. Targets aren’t counted until you save each exercise.</Text>
+          {pendingProgramExercises.map((entry) => <Pressable key={entry.id} accessibilityRole="button"
+            accessibilityLabel={`Log ${entry.exerciseName}, ${formatProgramPrescription(entry)}`} onPress={() => selectProgramExercise(entry)} style={styles.programQueueRow}>
+            <Text style={styles.programQueueOrder}>{programPlan.exercises.findIndex((item) => item.id === entry.id) + 1}</Text>
+            <View style={{ flex: 1, gap: 6 }}><Text style={styles.programQueueName}>{entry.exerciseName}</Text>
+              <Text style={styles.programQueueHint}>{formatProgramPrescription(entry)}</Text></View>
+            <Ionicons name="chevron-forward" size={18} color={colors.accent} />
+          </Pressable>)}
+        </View> : null}
+
         <View style={styles.sessionList}>
+          {loggedExercises.length === 0 && !programPlan ? (
+            <View style={styles.emptyActiveSession}>
+              <Ionicons name="barbell-outline" size={32} color={theme.colors.accent} />
+              <Text style={[styles.emptyActiveTitle, { color: theme.colors.text }]}>Your session starts here.</Text>
+              <Text style={[styles.emptyActiveCopy, { color: theme.colors.secondaryText }]}>Find your first exercise and make this session your own.</Text>
+            </View>
+          ) : null}
           {loggedExercises.map((entry, index) => (
             <SessionEntryRow
               entry={entry}
@@ -420,11 +591,11 @@ export default function WorkoutsScreen() {
           <View style={styles.heroText}>
             <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>Custom</Text>
             <Text style={[styles.heroTitle, { color: theme.colors.text }]}>Add Exercise</Text>
-            <Text style={[styles.heroMeta, { color: theme.colors.secondaryText }]}>Name the movement, then log it with the same session sliders.</Text>
+            <Text style={[styles.heroMeta, { color: theme.colors.secondaryText }]}>Name the movement, then record each completed set.</Text>
           </View>
         </View>
 
-        <View style={[styles.customNamePanel, { borderColor: theme.colors.border }]}> 
+        <View style={[styles.customNamePanel, { borderColor: theme.colors.border }]}>
           <Text style={[styles.controlLabel, { color: theme.colors.secondaryText }]}>Exercise Name</Text>
           <TextInput
             autoCapitalize="words"
@@ -462,59 +633,36 @@ export default function WorkoutsScreen() {
         style={[styles.screen, { backgroundColor: theme.colors.background }]}
         contentContainerStyle={styles.loggerContent}
       >
-        <Pressable accessibilityRole="button" onPress={() => setStep("picker")} style={styles.backButton}>
+        <Pressable accessibilityRole="button" disabled={isSavingExercise} onPress={() => setStep(selectedProgramEntryId ? "active" : "picker")} style={styles.backButton}>
           <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
-          <Text style={[styles.backText, { color: theme.colors.text }]}>Exercises</Text>
+          <Text style={[styles.backText, { color: theme.colors.text }]}>{selectedProgramEntryId ? "Session" : "Exercises"}</Text>
         </Pressable>
 
         <View style={styles.detailHero}>
           <View style={styles.heroText}>
             <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>{selectedExercise.category}</Text>
             <Text style={[styles.heroTitle, { color: theme.colors.text }]}>{selectedExercise.name}</Text>
-            <Text style={[styles.heroMeta, { color: theme.colors.secondaryText }]}> 
+            <Text style={[styles.heroMeta, { color: theme.colors.secondaryText }]}>
               {selectedExercise.equipment} / {selectedExercise.focus}
             </Text>
           </View>
         </View>
 
-        <View style={styles.controls}>
-          <SliderControl label="Sets" value={sets} min={1} max={12} step={1} majorEvery={5} onChange={setSets} />
-          <SliderControl label="Reps" value={reps} min={1} max={31} step={1} majorEvery={5} onChange={setReps} />
-          <SliderControl
-            label="Weight"
-            value={weight}
-            min={0}
-            max={300}
-            step={0.5}
-            suffix="lb"
-            majorEvery={5}
-            onChange={setWeight}
-          />
-        </View>
-
-        <Pressable
-          accessibilityRole="button"
-          onPress={saveExerciseToSession}
-          style={({ pressed }) => [
-            styles.saveButton,
-            {
-              backgroundColor: theme.colors.accent,
-              opacity: pressed ? 0.82 : 1
-            }
-          ]}
-        >
-          <Ionicons name="checkmark" size={20} color={theme.colors.onAccent} />
-          <Text style={[styles.saveButtonText, { color: theme.colors.onAccent }]}>Save Exercise</Text>
-        </Pressable>
+        {selectedProgramEntryId ? <View style={styles.programQueue}>
+          <Text style={styles.programQueueTitle}>Planned target</Text>
+          <Text style={styles.programQueueHint}>{(() => { const entry = programPlan?.exercises.find((item) => item.id === selectedProgramEntryId); return entry ? formatProgramPrescription(entry) : ""; })()}</Text>
+        </View> : null}
+        <CoachedSetLogger key={`${selectedExercise.id}:${selectedProgramEntryId ?? "manual"}`} exerciseId={selectedExercise.id}
+          entry={programPlan?.exercises.find((item) => item.id === selectedProgramEntryId)} readiness={readiness} onReadiness={setReadiness}
+          saving={isSavingExercise} onSave={saveExerciseToSession} />
+        {storageError ? <Text accessibilityRole="alert" style={[styles.errorText, { color: colors.danger }]}>{storageError}</Text> : null}
       </ScrollView>
     );
   }
 
   return (
-    <ScrollView
-      style={[styles.screen, { backgroundColor: theme.colors.background }]}
-      contentContainerStyle={styles.pickerContent}
-    >
+    <ExerciseBrowser onSelect={selectExercise} header={
+      <View>
       <Pressable accessibilityRole="button" onPress={() => setStep("active")} style={styles.backButton}>
         <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
         <Text style={[styles.backText, { color: theme.colors.text }]}>Session</Text>
@@ -543,38 +691,8 @@ export default function WorkoutsScreen() {
         </View>
       </Pressable>
 
-      {Object.entries(categories).map(([category, exercises]) => (
-        <View key={category} style={styles.categorySection}>
-          <Text style={[styles.categoryTitle, { color: theme.colors.text }]}>{category}</Text>
-          <View style={styles.exerciseGrid}>
-            {exercises.map((exercise) => (
-              <Pressable
-                accessibilityRole="button"
-                key={exercise.id}
-                onPress={() => selectExercise(exercise)}
-                style={({ pressed }) => [
-                  styles.exerciseCard,
-                  {
-                    borderColor: theme.colors.border,
-                    opacity: pressed ? 0.78 : 1
-                  }
-                ]}
-              >
-                <View style={styles.exerciseImagePanel}>
-                  <Image source={exercise.image} resizeMode="contain" style={styles.exerciseImage} />
-                </View>
-                <View style={styles.exerciseText}>
-                  <Text style={[styles.exerciseName, { color: theme.colors.text }]}>{exercise.name}</Text>
-                  <Text style={[styles.exerciseMeta, { color: theme.colors.secondaryText }]}> 
-                    {exercise.equipment}
-                  </Text>
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      ))}
-    </ScrollView>
+      </View>
+    } />
   );
 }
 
@@ -595,6 +713,7 @@ type PreviousSessionRowProps = {
 };
 
 function PreviousSessionRow({ session }: PreviousSessionRowProps) {
+  const { styles, colors, ui } = useThemeStyles(themedStyles);
   const theme = useAppTheme();
   const completedAt = new Date(session.completedAt);
   const exerciseLabel = session.exerciseCount === 1 ? "exercise" : "exercises";
@@ -608,14 +727,14 @@ function PreviousSessionRow({ session }: PreviousSessionRowProps) {
           {formatSessionDate(completedAt)} / {formatSessionTime(completedAt)}
         </Text>
         <Text style={[styles.previousSessionDetails, { color: theme.colors.secondaryText }]}>
-          {session.exerciseCount} {exerciseLabel} / {session.totalSets} {setLabel}
+          {session.exerciseCount} {exerciseLabel} / {session.totalSets} {setLabel}{session.totalDurationSeconds > 0 ? ` / ${formatDuration(session.totalDurationSeconds)} timed work` : ""}
         </Text>
       </View>
       <View style={styles.previousSessionVolume}>
         <Text style={[styles.previousSessionVolumeValue, { color: theme.colors.text }]}>
-          {formatVolume(session.totalVolume)} {volumeUnit}
+          {session.totalVolume === 0 && session.totalDurationSeconds > 0 ? formatDuration(session.totalDurationSeconds) : `${formatVolume(session.totalVolume)} ${volumeUnit}`}
         </Text>
-        <Text style={[styles.previousSessionVolumeLabel, { color: theme.colors.mutedText }]}>Volume</Text>
+        <Text style={[styles.previousSessionVolumeLabel, { color: theme.colors.mutedText }]}>{session.totalVolume === 0 && session.totalDurationSeconds > 0 ? "Timed work" : "Volume"}</Text>
       </View>
     </View>
   );
@@ -628,6 +747,7 @@ type SessionEntryRowProps = {
 };
 
 function SessionEntryRow({ entry, index, onDelete }: SessionEntryRowProps) {
+  const { styles, colors, ui } = useThemeStyles(themedStyles);
   const theme = useAppTheme();
   const rowTranslateX = useRef(new Animated.Value(0));
   const deleteRevealWidth = 86;
@@ -665,7 +785,7 @@ function SessionEntryRow({ entry, index, onDelete }: SessionEntryRowProps) {
       <Pressable
         accessibilityRole="button"
         onPress={() => onDelete(entry.id)}
-        style={[styles.deleteReveal, { backgroundColor: "#FFFFFF" }]}
+        style={[styles.deleteReveal, { backgroundColor: theme.colors.danger }]}
       >
         <Ionicons name="trash-outline" size={22} color={theme.colors.onAccent} />
       </Pressable>
@@ -686,177 +806,40 @@ function SessionEntryRow({ entry, index, onDelete }: SessionEntryRowProps) {
           </Text>
         </View>
         <Text style={[styles.sessionEntryName, { color: theme.colors.text }]}>{entry.exercise.name}</Text>
-        <Text style={[styles.sessionEntryStats, { color: theme.colors.secondaryText }]}> 
-          {entry.sets} sets / {entry.reps} reps / {formatSliderValue(entry.weight)} lb
+        <Text style={[styles.sessionEntryStats, { color: theme.colors.secondaryText }]}>
+          {getActualSets(entry).map((set, i) => `${i + 1}: ${set.durationSeconds != null ? formatDuration(set.durationSeconds) : `${set.reps} reps`} × ${set.weight} lb${set.warmup ? " (warm-up)" : ""}`).join(" · ")}
         </Text>
       </Animated.View>
     </View>
   );
 }
 
-type SliderControlProps = {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  suffix?: string;
-  majorEvery?: number;
-  onChange: (value: number) => void;
-};
-
-function SliderControl({ label, value, min, max, step, suffix, majorEvery, onChange }: SliderControlProps) {
-  const theme = useAppTheme();
-  const [trackWidth, setTrackWidth] = useState(1);
-  const [draftValue, setDraftValue] = useState(value);
-  const draftValueRef = useRef(value);
-  const valueRef = useRef(value);
-  const dragStartValue = useRef(value);
-  const isDragging = useRef(false);
-  const railTranslateX = useRef(new Animated.Value(0));
-  const tickCount = Math.round((max - min) / step);
-  const tickSpacing = step < 1 ? 9 : 18;
-  const isSubStepRuler = step < 1;
-  const selectedIndex = Math.round((draftValue - min) / step);
-  const displayValue = suffix ? `${formatSliderValue(draftValue)} ${suffix}` : formatSliderValue(draftValue);
-  const resolvedMajorEvery = majorEvery ?? 5;
-  const markerOffset = Math.round(trackWidth / 2 - tickSpacing / 2);
-  const firstIndex = 0;
-  const lastIndex = tickCount;
-  const baseRailX = markerOffset - (selectedIndex - firstIndex) * tickSpacing;
-
-  const ticks = useMemo(() => {
-
-    return Array.from({ length: lastIndex - firstIndex + 1 }, (_, offset) => {
-      const index = firstIndex + offset;
-      const tickValue = min + index * step;
-      return {
-        index,
-        isMajor: index === 0 || index === tickCount || isMajorTick(tickValue, min, resolvedMajorEvery),
-        isWholeStep: step < 1 && Number.isInteger(tickValue)
-      };
-    });
-  }, [firstIndex, lastIndex, min, resolvedMajorEvery, step, tickCount]);
-
-  useEffect(() => {
-    valueRef.current = value;
-    if (!isDragging.current) {
-      draftValueRef.current = value;
-      setDraftValue(value);
-    }
-  }, [value]);
-
-  useEffect(() => {
-    if (isDragging.current) {
-      railTranslateX.current.setValue(baseRailX);
-      return;
-    }
-
-    Animated.timing(railTranslateX.current, {
-      duration: 110,
-      toValue: baseRailX,
-      useNativeDriver: supportsNativeAnimatedDriver
-    }).start();
-  }, [baseRailX]);
-
-  function clampToStep(rawValue: number) {
-    const steppedValue = min + Math.round((rawValue - min) / step) * step;
-    return Number(Math.min(max, Math.max(min, steppedValue)).toFixed(2));
-  }
-
-  function handleLayout(event: LayoutChangeEvent) {
-    setTrackWidth(Math.max(1, event.nativeEvent.layout.width));
-  }
-
-  function valueFromDrag(dx: number) {
-    return clampToStep(dragStartValue.current - (dx / tickSpacing) * step);
-  }
-
-  function updateDraftValue(nextValue: number) {
-    draftValueRef.current = nextValue;
-    setDraftValue(nextValue);
-  }
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 2,
-        onStartShouldSetPanResponder: () => false,
-        onPanResponderGrant: () => {
-          isDragging.current = true;
-          dragStartValue.current = draftValueRef.current;
-          railTranslateX.current.stopAnimation();
-        },
-        onPanResponderMove: (_, gesture) => {
-          updateDraftValue(valueFromDrag(gesture.dx));
-        },
-        onPanResponderRelease: (_, gesture) => {
-          const nextValue = valueFromDrag(gesture.dx);
-          isDragging.current = false;
-          updateDraftValue(nextValue);
-          onChange(nextValue);
-        },
-        onPanResponderTerminate: () => {
-          isDragging.current = false;
-          updateDraftValue(valueRef.current);
-        }
-      }),
-    [max, min, onChange, step, tickSpacing]
-  );
-
-  return (
-    <View style={[styles.controlPanel, { borderColor: theme.colors.border }]}> 
-      <View style={styles.controlHeader}>
-        <Text style={[styles.controlLabel, { color: theme.colors.secondaryText }]}>{label}</Text>
-        <Text style={[styles.controlValue, { color: theme.colors.text }]}>{displayValue}</Text>
-      </View>
-
-      <View accessibilityRole="adjustable" onLayout={handleLayout} style={styles.sliderHitArea} {...panResponder.panHandlers}>
-        <View style={styles.rulerWindow}>
-          <Animated.View
-            style={[
-              styles.tickRow,
-              {
-                transform: [{ translateX: railTranslateX.current }]
-              }
-            ]}
-          >
-            {ticks.map((tick) => (
-              <View key={`${label}-${tick.index}`} style={[styles.tickCell, { width: tickSpacing }]}>
-                <View
-                  style={[
-                    styles.tick,
-                    tick.isMajor ? styles.majorTick : tick.isWholeStep ? styles.mediumTick : isSubStepRuler ? styles.subStepTick : styles.minorTick,
-                    {
-                      backgroundColor: theme.colors.secondaryText,
-                      opacity: tick.isMajor ? 1 : 0.62
-                    }
-                  ]}
-                />
-              </View>
-            ))}
-          </Animated.View>
-          <View pointerEvents="none" style={[styles.fixedSliderMarkerDot, { backgroundColor: theme.colors.accent }]} />
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function formatSliderValue(value: number) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
-
-function isMajorTick(value: number, min: number, majorEvery: number) {
-  const offset = Number((value - min).toFixed(2));
-  return Math.abs(offset % majorEvery) < 0.01 || Math.abs((offset % majorEvery) - majorEvery) < 0.01;
-}
-
-const styles = StyleSheet.create({
+const themedStyles = createThemedStyles((colors, ui) => ({
+  heroTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%" },
+  plannedSection: { gap: 12, marginTop: 24 },
+  plannedGroup: { ...ui.group, paddingHorizontal: 16 },
+  plannedRow: { paddingVertical: 16, flexDirection: "row", alignItems: "center", gap: 12 },
+  rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  scheduleLink: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 5, marginTop: 8 },
+  scheduleLinkText: { color: colors.accent, fontSize: 14, fontWeight: "500" },
+  todayProgram: { ...ui.group, padding: 22, marginTop: 26, gap: 12 },
+  programQueueLabel: { color: colors.accent, fontSize: 11, fontWeight: "700", letterSpacing: 0.7 },
+  todayProgramTitle: { color: colors.text, fontSize: 22, fontWeight: "600" },
+  todayProgramButton: { ...ui.primary, minHeight: 48, padding: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 4 },
+  todayProgramButtonText: { color: colors.onAccent, fontSize: 13, fontWeight: "700" },
+  storageError: { color: colors.danger, fontSize: 13, lineHeight: 21, marginTop: 16 },
+  programQueue: { ...ui.group, padding: 22, gap: 16, marginTop: 24 },
+  programQueueTitle: { color: colors.text, fontSize: 20, fontWeight: "600" },
+  programQueueHint: { color: colors.secondaryText, fontSize: 12, lineHeight: 19 },
+  programQueueRow: { paddingVertical: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, flexDirection: "row", alignItems: "center", gap: 12, minHeight: 76 },
+  programQueueOrder: { color: colors.accent, fontSize: 13, fontWeight: "700" },
+  programQueueName: { color: colors.text, fontSize: 15, fontWeight: "600" },
+  emptyActiveSession: { ...ui.input, padding: 28, gap: 14, alignItems: "center" },
+  emptyActiveTitle: { fontSize: 18, fontWeight: "600", textAlign: "center" },
+  emptyActiveCopy: { fontSize: 14, lineHeight: 22, textAlign: "center" },
+  heroSymbol: { ...ui.input, alignItems: "center", justifyContent: "center", width: 78, height: 78, borderRadius: 39, marginBottom: 24 },
   activeContent: {
-    paddingBottom: 118,
-    paddingHorizontal: 20,
-    paddingTop: 72
+    ...ui.content,
   },
   activeHeader: {
     gap: 10
@@ -867,12 +850,13 @@ const styles = StyleSheet.create({
     lineHeight: 20
   },
   activeTitle: {
-    fontSize: 34,
-    fontWeight: "800",
+    fontSize: 30,
+    fontWeight: "600",
     lineHeight: 39,
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   addExerciseButton: {
+    ...ui.primary,
     alignItems: "center",
     flexDirection: "row",
     gap: 8,
@@ -883,8 +867,8 @@ const styles = StyleSheet.create({
   },
   addExerciseText: {
     fontSize: 14,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontWeight: "600",
+    textTransform: "none"
   },
   backButton: {
     alignItems: "center",
@@ -892,12 +876,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 4,
     minHeight: 44,
-    paddingRight: 12
+    paddingRight: 12,
+    paddingBottom: 4,
   },
   backText: {
     fontSize: 13,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontWeight: "600",
+    textTransform: "none"
   },
   categorySection: {
     gap: 12,
@@ -905,8 +890,8 @@ const styles = StyleSheet.create({
   },
   categoryTitle: {
     fontSize: 16,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontWeight: "600",
+    textTransform: "none"
   },
   controlHeader: {
     alignItems: "center",
@@ -915,22 +900,24 @@ const styles = StyleSheet.create({
   },
   controlLabel: {
     fontSize: 12,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontWeight: "600",
+    textTransform: "none"
   },
   controlPanel: {
-    borderWidth: StyleSheet.hairlineWidth,
+    ...ui.group,
+    borderWidth: 0,
     gap: 18,
-    padding: 18
+    padding: 22,
   },
   controlValue: {
-    fontSize: 26,
-    fontWeight: "800",
-    textAlign: "right"
+    fontSize: 30,
+    fontWeight: "600",
+    textAlign: "right",
+    color: colors.accent,
   },
   controls: {
-    gap: 12,
-    marginTop: 18
+    gap: 22,
+    marginTop: 26,
   },
   deleteReveal: {
     alignItems: "center",
@@ -939,16 +926,19 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 0,
     top: 0,
-    width: 86
+    width: 86,
+    borderRadius: 22,
   },
   customExerciseButton: {
+    ...ui.control,
     alignItems: "center",
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
     flexDirection: "row",
     gap: 12,
-    marginTop: 24,
+    marginTop: 18,
     minHeight: 72,
-    padding: 14
+    padding: 14,
+    borderRadius: 18,
   },
   customExerciseCopy: {
     fontSize: 12,
@@ -961,21 +951,23 @@ const styles = StyleSheet.create({
   },
   customExerciseTitle: {
     fontSize: 14,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontWeight: "600",
+    textTransform: "none"
   },
   customNameInput: {
-    borderWidth: StyleSheet.hairlineWidth,
+    ...ui.input,
+    borderWidth: 0,
     fontSize: 18,
-    fontWeight: "800",
+    fontWeight: "500",
     marginTop: 12,
     minHeight: 54,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   customNamePanel: {
-    borderWidth: StyleSheet.hairlineWidth,
+    ...ui.group,
+    borderWidth: 0,
     marginTop: 18,
     padding: 18
   },
@@ -984,10 +976,10 @@ const styles = StyleSheet.create({
     marginTop: 8
   },
   eyebrow: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0,
-    textTransform: "uppercase"
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 1.3,
+    textTransform: "uppercase",
   },
   exerciseCard: {
     borderWidth: StyleSheet.hairlineWidth,
@@ -997,10 +989,10 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
     lineHeight: 18,
     marginTop: 4,
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   exerciseGrid: {
     flexDirection: "row",
@@ -1014,7 +1006,7 @@ const styles = StyleSheet.create({
   },
   exerciseImagePanel: {
     aspectRatio: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.accentSoft,
     justifyContent: "center",
     overflow: "hidden",
     width: "100%"
@@ -1024,11 +1016,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 15,
     marginTop: 6,
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   exerciseName: {
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
     lineHeight: 18
   },
   exerciseText: {
@@ -1037,7 +1029,7 @@ const styles = StyleSheet.create({
   },
   heroMeta: {
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "400",
     lineHeight: 20,
     marginTop: 8
   },
@@ -1045,16 +1037,14 @@ const styles = StyleSheet.create({
     maxWidth: 520
   },
   heroTitle: {
-    fontSize: 34,
-    fontWeight: "800",
-    lineHeight: 39,
+    fontSize: 29,
+    fontWeight: "600",
+    lineHeight: 36,
     marginTop: 8,
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   loggerContent: {
-    paddingBottom: 118,
-    paddingHorizontal: 20,
-    paddingTop: 64
+    ...ui.content,
   },
   majorTick: {
     height: 28,
@@ -1074,41 +1064,43 @@ const styles = StyleSheet.create({
   },
   noticeText: {
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
     lineHeight: 18,
     marginTop: 4,
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   previousSessionDate: {
-    fontSize: 16,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontSize: 15,
+    fontWeight: "600",
+    textTransform: "none"
   },
   previousSessionDetails: {
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "400",
     lineHeight: 17,
     marginTop: 6,
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   previousSessionList: {
-    gap: 10
+    ...ui.group,
+    paddingHorizontal: 16,
   },
   previousSessionMeta: {
     flex: 1,
     paddingRight: 16
   },
   previousSessionRow: {
+    borderRadius: 0,
     alignItems: "center",
-    borderWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     justifyContent: "space-between",
     minHeight: 78,
-    paddingHorizontal: 14,
-    paddingVertical: 12
+    paddingHorizontal: 0,
+    paddingVertical: 12,
   },
   previousSessionsHeader: {
-    gap: 8
+    gap: 4,
   },
   previousSessionsSection: {
     gap: 14,
@@ -1117,69 +1109,72 @@ const styles = StyleSheet.create({
   },
   previousSessionsTitle: {
     fontSize: 22,
-    fontWeight: "800",
+    fontWeight: "600",
     lineHeight: 27,
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   previousSessionVolume: {
     alignItems: "flex-end"
   },
   previousSessionVolumeLabel: {
     fontSize: 10,
-    fontWeight: "800",
+    fontWeight: "600",
     marginTop: 4,
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   previousSessionVolumeValue: {
     fontSize: 18,
-    fontWeight: "800"
+    fontWeight: "600",
+    color: colors.accent,
   },
   emptySessionHistory: {
+    ...ui.input,
     alignItems: "center",
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
     minHeight: 78,
     justifyContent: "center",
-    padding: 16
+    padding: 24,
   },
   emptySessionHistoryText: {
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "600",
     lineHeight: 18,
     textAlign: "center",
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   pickerContent: {
-    paddingBottom: 118,
-    paddingHorizontal: 20,
-    paddingTop: 72
+    ...ui.content,
   },
   pickerHeader: {
     gap: 10,
     marginTop: 8
   },
   pickerTitle: {
-    fontSize: 34,
-    fontWeight: "800",
-    lineHeight: 39,
-    textTransform: "uppercase"
+    fontSize: 29,
+    fontWeight: "600",
+    lineHeight: 36,
+    textTransform: "none"
   },
   primaryButton: {
+    ...ui.primary,
     alignItems: "center",
     flexDirection: "row",
     gap: 8,
     justifyContent: "center",
-    marginTop: 34,
+    marginTop: 24,
     minHeight: 56,
-    minWidth: 220,
+    minWidth: 0,
     paddingHorizontal: 24,
-    paddingVertical: 14
+    paddingVertical: 14,
+    width: "100%",
   },
   primaryButtonText: {
     fontSize: 14,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontWeight: "600",
+    textTransform: "none"
   },
   saveButton: {
+    ...ui.primary,
     alignItems: "center",
     flexDirection: "row",
     gap: 8,
@@ -1191,12 +1186,24 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 14,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontWeight: "600",
+    textTransform: "none"
+  },
+  restDayButton: {
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 42,
+    justifyContent: "center",
+    paddingHorizontal: 14
+  },
+  restDayButtonText: {
+    fontSize: 11,
+    fontWeight: "600",
+    textTransform: "none"
   },
   saveSessionButton: {
+    ...ui.control,
     alignItems: "center",
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
     flexDirection: "row",
     gap: 8,
     justifyContent: "center",
@@ -1206,18 +1213,20 @@ const styles = StyleSheet.create({
   },
   saveSessionText: {
     fontSize: 14,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontWeight: "600",
+    textTransform: "none"
   },
   screen: {
     flex: 1
   },
   sessionEntry: {
-    backgroundColor: "#000000",
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: colors.surface,
+    borderWidth: 0,
     minHeight: 96,
     paddingHorizontal: 14,
-    paddingVertical: 12
+    paddingVertical: 12,
+    borderRadius: 22,
+    padding: 20,
   },
   sessionEntryHeader: {
     alignItems: "center",
@@ -1227,15 +1236,15 @@ const styles = StyleSheet.create({
 
   sessionEntryIndex: {
     fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontWeight: "600",
+    textTransform: "none"
   },
   sessionEntryName: {
     fontSize: 17,
-    fontWeight: "800",
+    fontWeight: "600",
     lineHeight: 22,
     marginTop: 10,
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   sessionEntryStats: {
     fontSize: 13,
@@ -1245,19 +1254,21 @@ const styles = StyleSheet.create({
   },
   sessionEntryTime: {
     fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase"
+    fontWeight: "600",
+    textTransform: "none"
   },
   sessionList: {
-    gap: 12,
-    marginTop: 18
+    gap: 20,
+    marginTop: 26,
   },
   sessionSwipeShell: {
-    overflow: "hidden",
-    position: "relative"
+    ...ui.group,
+    overflow: "visible",
+    position: "relative",
+    borderRadius: 22,
   },
   fixedSliderMarkerDot: {
-    borderColor: "#000000",
+    borderColor: colors.surface,
     borderRadius: 14,
     borderWidth: 2,
     height: 30,
@@ -1266,9 +1277,10 @@ const styles = StyleSheet.create({
     marginTop: -15,
     position: "absolute",
     top: "50%",
-    width: 20
+    width: 20,
   },
   rulerWindow: {
+    ...ui.input,
     height: 64,
     overflow: "hidden",
     position: "relative"
@@ -1278,22 +1290,45 @@ const styles = StyleSheet.create({
     minHeight: 64
   },
   startContent: {
-    paddingBottom: 118,
-    paddingHorizontal: 20,
-    paddingTop: 72
+    ...ui.content,
   },
   startHero: {
-    alignItems: "center"
+    ...ui.group,
+    padding: 20,
+  },
+  streakCard: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 22,
+    maxWidth: 360,
+    padding: 16,
+    width: "100%",
+    borderWidth: StyleSheet.hairlineWidth
+  },
+  streakCardCopy: {
+    flex: 1
+  },
+  streakDescription: {
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 17,
+    marginTop: 3
+  },
+  streakValue: {
+    fontSize: 24,
+    fontWeight: "600",
+    marginTop: 4
   },
   startCopy: {
-    fontSize: 15,
+    fontSize: 14,
     lineHeight: 22,
-    marginTop: 14,
+    marginTop: 10,
     maxWidth: 340,
-    textAlign: "center"
+    textAlign: "left"
   },
   startHeader: {
-    alignItems: "center"
+    alignItems: "stretch"
   },
   startStats: {
     borderWidth: StyleSheet.hairlineWidth,
@@ -1311,17 +1346,18 @@ const styles = StyleSheet.create({
   },
   startStatText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "600",
     textAlign: "center",
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   startTitle: {
-    fontSize: 42,
-    fontWeight: "800",
-    letterSpacing: 0,
+    fontSize: 27,
+    fontWeight: "600",
+    letterSpacing: -0.7,
     marginTop: 10,
-    textAlign: "center",
-    textTransform: "uppercase"
+    textAlign: "left",
+    textTransform: "none",
+    lineHeight: 34,
   },
   tick: {
     alignSelf: "center"
@@ -1336,4 +1372,4 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     height: 64
   }
-});
+}));

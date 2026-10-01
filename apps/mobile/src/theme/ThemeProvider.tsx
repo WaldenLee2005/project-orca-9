@@ -1,26 +1,20 @@
 import { createContext, PropsWithChildren, useContext } from "react";
+import { useColorScheme } from "react-native";
+import { palettes, surfaces, type Appearance } from "./designSystem";
 
-const theme = {
-  colors: {
-    accent: "#FFFFFF",
-    background: "#000000",
-    border: "#CFCFCF",
-    mutedText: "#A0A0A0",
-    onAccent: "#000000",
-    secondaryText: "#D8D8D8",
-    surface: "#000000",
-    text: "#FFFFFF"
-  }
-};
-
-type AppTheme = typeof theme;
-
-const ThemeContext = createContext<AppTheme>(theme);
+const ThemeContext = createContext<Appearance>("light");
 
 export function ThemeProvider({ children }: PropsWithChildren) {
-  return <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>;
+  const appearance = useColorScheme() === "dark" ? "dark" : "light";
+  return <ThemeContext.Provider value={appearance}>{children}</ThemeContext.Provider>;
 }
 
 export function useAppTheme() {
-  return useContext(ThemeContext);
+  const appearance = useContext(ThemeContext);
+  return { appearance, isDark: appearance === "dark", colors: palettes[appearance], ui: surfaces[appearance] };
+}
+
+export function useThemeStyles<T>(sheets: { light: T; dark: T }) {
+  const theme = useAppTheme();
+  return { ...theme, styles: sheets[theme.appearance] };
 }

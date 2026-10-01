@@ -1,5 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
+import { StyleSheet } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppTheme } from "../../src/theme/ThemeProvider";
 
 type TabIconName = keyof typeof Ionicons.glyphMap;
@@ -9,37 +11,47 @@ const tabIcons: Record<string, TabIconName> = {
   exercises: "search-outline",
   programs: "calendar-outline",
   progress: "trending-up-outline",
-  profile: "person-circle-outline"
+  profile: "person-outline"
 };
 
 export default function TabLayout() {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
       screenOptions={({ route }) => ({
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: theme.colors.accent,
         tabBarInactiveTintColor: theme.colors.mutedText,
+        tabBarLabelPosition: "below-icon",
         tabBarStyle: {
+          boxShadow: "none",
+          elevation: 0,
+          shadowOpacity: 0,
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.border,
-          borderTopWidth: 0.5,
-          height: 84,
-          paddingBottom: 14,
-          paddingTop: 10
+          borderTopWidth: StyleSheet.hairlineWidth,
+          height: 58 + Math.max(insets.bottom, 8),
+          paddingBottom: Math.max(insets.bottom, 8),
+          paddingTop: 6
+        },
+        tabBarIconStyle: {
+          height: 26,
+          marginBottom: 3
         },
         tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: "700",
+          fontSize: 11,
+          fontWeight: "500",
           lineHeight: 13
         },
         tabBarItemStyle: {
-          minWidth: 68,
+          minWidth: 48,
           paddingHorizontal: 0
         },
         tabBarIcon: ({ color }) => (
-          <Ionicons name={tabIcons[route.name] ?? "ellipse-outline"} size={22} color={color} />
+          <Ionicons name={tabIcons[route.name] ?? "ellipse-outline"} size={23} color={color} />
         )
       })}
     >

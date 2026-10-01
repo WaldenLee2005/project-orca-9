@@ -1,4 +1,5 @@
-import { supabase } from "../../lib/supabase";
+import { getSupabaseClient } from "../../lib/supabase";
+import { getCurrentAccessToken } from "./authRepository";
 
 const AVATAR_BUCKET = "avatars";
 
@@ -8,6 +9,8 @@ export async function uploadAvatarFromUri(input: {
   base64: string;
   mimeType?: string;
 }) {
+  if (!await getCurrentAccessToken()) throw new Error("Sign in to upload a profile photo.");
+  const supabase = getSupabaseClient();
   const extension = extensionFromMimeType(input.mimeType) ?? extensionFromUri(input.uri) ?? "jpg";
   const contentType = input.mimeType ?? contentTypeFromExtension(extension);
   const path = `${input.userId}/avatar.${extension}`;

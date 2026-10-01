@@ -1,22 +1,32 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
-import { SessionExercise, sessionExercises } from "../features/workouts/repdbSessionExercises";
+import { type SessionExercise, sessionExercises } from "../features/workouts/repdbSessionExercises";
 import { compactLocalDatabase, createLocalId, getDatabase } from "./database";
 import { getCachedCurrentUserProfile, warmCurrentUserProfileCache } from "./profilesRepository";
+import { getScheduledDayIndex, parseWorkoutProgramPlan, toWorkoutProgramPlan, validateExerciseTarget, validateProgramLoad, type ProgramExercise, type WorkoutProgramPlan } from "../features/programs/programModel";
+import { getProgramLibrary } from "./programsRepository";
+import { ensureWebTrainingStorage } from "./trainingStorage";
 
+export type WorkoutSet = { reps: number; weight: number; durationSeconds?: number | null; effort?: "easy" | "moderate" | "hard" | null; warmup?: boolean };
+export type ExerciseExposure = { sessionId: string; performedAt: string; exerciseId: string; actualSets: WorkoutSet[]; prescription?: ProgramExercise };
 export type StoredSessionExercise = {
   id: string;
   exercise: SessionExercise;
   sets: number;
   reps: number;
   weight: number;
+  durationSeconds?: number | null;
   savedAt: string;
+  programEntryId?: string | null;
+  actualSets?: WorkoutSet[];
+  prescription?: ProgramExercise;
 };
 
 export type ActiveWorkoutSession = {
   id: string;
   startedAt: string;
   exercises: StoredSessionExercise[];
+  programPlan?: WorkoutProgramPlan | null;
 };
 
 export type CompletedWorkoutSession = {
@@ -26,12 +36,29 @@ export type CompletedWorkoutSession = {
   exerciseCount: number;
   totalSets: number;
   totalVolume: number;
+  totalDurationSeconds: number;
 };
 
 export type ProgressVolumePoint = {
   id: string;
   completedAt: string;
   volume: number;
+};
+
+export type ProgressAverageWeightPoint = {
+  id: string;
+  completedAt: string;
+  averageWeight: number;
+  totalReps: number;
+};
+
+export type ProgressStrengthPoint = {
+  id: string;
+  completedAt: string;
+  estimatedOneRepMax: number;
+  weight: number;
+  reps: number;
+  exerciseName: string;
 };
 
 export type ProgressLiftOption = {
@@ -49,6 +76,7 @@ const WEB_WORKOUT_SESSIONS_KEY = "orca9.workoutSessions";
 type WorkoutSessionRow = {
   id: string;
   started_at: string;
+  program_plan_json: string | null;
 };
 
 type CompletedWorkoutSessionRow = {
@@ -58,12 +86,29 @@ type CompletedWorkoutSessionRow = {
   exercise_count: number;
   total_sets: number;
   total_volume: number;
+  total_duration_seconds: number;
 };
 
 type ProgressVolumePointRow = {
   id: string;
   completed_at: string;
   volume: number;
+};
+
+type ProgressAverageWeightPointRow = {
+  id: string;
+  completed_at: string;
+  average_weight: number;
+  total_reps: number;
+};
+
+type ProgressStrengthPointRow = {
+  id: string;
+  completed_at: string;
+  estimated_one_rep_max: number;
+  weight: number;
+  reps: number;
+  exercise_name: string;
 };
 
 type ProgressLiftOptionRow = {
@@ -79,9 +124,12 @@ type WorkoutExerciseRow = {
   exercise_name_snapshot: string;
   exercise_order: number;
   saved_at: string;
+  program_entry_id: string | null;
   sets: number;
   reps: number;
   weight: number;
+  duration_seconds: number | null;
+  prescription_json: string | null;
 };
 
 export async function getActiveWorkoutSession() {
@@ -91,7 +139,7 @@ export async function getActiveWorkoutSession() {
 
   const database = await getDatabase();
   const session = await database.getFirstAsync<WorkoutSessionRow>(
-    `SELECT id, started_at
+    `SELECT id, started_at, program_plan_json
      FROM workout_sessions
      WHERE completed_at IS NULL
      ORDER BY started_at DESC
@@ -105,7 +153,8 @@ export async function getActiveWorkoutSession() {
   return {
     id: session.id,
     startedAt: session.started_at,
-    exercises: await getWorkoutExercises(session.id)
+    exercises: await getWorkoutExercises(session.id),
+    programPlan: decodeProgramPlan(session.program_plan_json)
   };
 }
 
@@ -122,7 +171,8 @@ export async function getCompletedWorkoutSessions(limit = 8) {
        workout_sessions.completed_at,
        COUNT(DISTINCT workout_exercises.id) AS exercise_count,
        COUNT(set_entries.id) AS total_sets,
-       COALESCE(SUM(set_entries.weight * set_entries.reps), 0) AS total_volume
+       COALESCE(SUM(CASE WHEN set_entries.duration_seconds IS NULL THEN set_entries.weight * set_entries.reps ELSE 0 END), 0) AS total_volume,
+       COALESCE(SUM(set_entries.duration_seconds), 0) AS total_duration_seconds
      FROM workout_sessions
      LEFT JOIN workout_exercises
        ON workout_exercises.workout_session_id = workout_sessions.id
@@ -141,8 +191,138 @@ export async function getCompletedWorkoutSessions(limit = 8) {
     completedAt: row.completed_at,
     exerciseCount: row.exercise_count,
     totalSets: row.total_sets,
-    totalVolume: row.total_volume
+    totalVolume: row.total_volume,
+    totalDurationSeconds: row.total_duration_seconds
   }));
+}
+
+export async function getProgressAverageWeightSeries(input: { liftKey?: string | null; limit?: number } = {}) {
+  if (Platform.OS === "web") {
+    return getWebProgressAverageWeightSeries(input);
+  }
+
+  const database = await getDatabase();
+  const limit = input.limit ?? 120;
+  const rows = input.liftKey
+    ? await database.getAllAsync<ProgressAverageWeightPointRow>(
+        `SELECT
+           workout_sessions.id,
+           workout_sessions.completed_at,
+           COALESCE(SUM(set_entries.weight * set_entries.reps) / NULLIF(SUM(set_entries.reps), 0), 0) AS average_weight,
+           COALESCE(SUM(set_entries.reps), 0) AS total_reps
+         FROM workout_sessions
+         INNER JOIN workout_exercises
+           ON workout_exercises.workout_session_id = workout_sessions.id
+         INNER JOIN set_entries
+           ON set_entries.workout_exercise_id = workout_exercises.id
+         WHERE workout_sessions.completed_at IS NOT NULL AND set_entries.duration_seconds IS NULL AND set_entries.reps > 0
+           AND COALESCE(workout_exercises.exercise_id, 'custom:' || lower(workout_exercises.exercise_name_snapshot)) = ?
+         GROUP BY workout_sessions.id
+         ORDER BY workout_sessions.completed_at DESC
+         LIMIT ?;`,
+        [input.liftKey, limit]
+      )
+    : await database.getAllAsync<ProgressAverageWeightPointRow>(
+        `SELECT
+           workout_sessions.id,
+           workout_sessions.completed_at,
+           COALESCE(SUM(set_entries.weight * set_entries.reps) / NULLIF(SUM(set_entries.reps), 0), 0) AS average_weight,
+           COALESCE(SUM(set_entries.reps), 0) AS total_reps
+         FROM workout_sessions
+         INNER JOIN workout_exercises
+           ON workout_exercises.workout_session_id = workout_sessions.id
+         INNER JOIN set_entries
+           ON set_entries.workout_exercise_id = workout_exercises.id
+         WHERE workout_sessions.completed_at IS NOT NULL AND set_entries.duration_seconds IS NULL AND set_entries.reps > 0
+         GROUP BY workout_sessions.id
+         ORDER BY workout_sessions.completed_at DESC
+         LIMIT ?;`,
+        [limit]
+      );
+
+  return rows.reverse().map((row) => ({
+    id: row.id,
+    completedAt: row.completed_at,
+    averageWeight: row.average_weight,
+    totalReps: row.total_reps
+  }));
+}
+
+export async function getProgressStrengthSeries(input: { liftKey?: string | null; limit?: number } = {}) {
+  if (Platform.OS === "web") {
+    return getWebProgressStrengthSeries(input);
+  }
+
+  const database = await getDatabase();
+  const limit = input.limit ?? 120;
+  const rows = input.liftKey
+    ? await database.getAllAsync<ProgressStrengthPointRow>(
+        `SELECT
+           ranked_sets.id,
+           ranked_sets.completed_at,
+           ranked_sets.estimated_one_rep_max,
+           ranked_sets.weight,
+           ranked_sets.reps,
+           ranked_sets.exercise_name
+         FROM (
+           SELECT
+             workout_sessions.id,
+             workout_sessions.completed_at,
+             set_entries.weight * (1 + set_entries.reps / 30.0) AS estimated_one_rep_max,
+             set_entries.weight,
+             set_entries.reps,
+             workout_exercises.exercise_name_snapshot AS exercise_name,
+             ROW_NUMBER() OVER (
+               PARTITION BY workout_sessions.id
+               ORDER BY set_entries.weight * (1 + set_entries.reps / 30.0) DESC, set_entries.weight DESC
+             ) AS strength_rank
+           FROM workout_sessions
+           INNER JOIN workout_exercises
+             ON workout_exercises.workout_session_id = workout_sessions.id
+           INNER JOIN set_entries
+             ON set_entries.workout_exercise_id = workout_exercises.id
+           WHERE workout_sessions.completed_at IS NOT NULL AND set_entries.duration_seconds IS NULL AND set_entries.reps > 0
+             AND COALESCE(workout_exercises.exercise_id, 'custom:' || lower(workout_exercises.exercise_name_snapshot)) = ?
+         ) ranked_sets
+         WHERE ranked_sets.strength_rank = 1
+         ORDER BY ranked_sets.completed_at DESC
+         LIMIT ?;`,
+        [input.liftKey, limit]
+      )
+    : await database.getAllAsync<ProgressStrengthPointRow>(
+        `SELECT
+           ranked_sets.id,
+           ranked_sets.completed_at,
+           ranked_sets.estimated_one_rep_max,
+           ranked_sets.weight,
+           ranked_sets.reps,
+           ranked_sets.exercise_name
+         FROM (
+           SELECT
+             workout_sessions.id,
+             workout_sessions.completed_at,
+             set_entries.weight * (1 + set_entries.reps / 30.0) AS estimated_one_rep_max,
+             set_entries.weight,
+             set_entries.reps,
+             workout_exercises.exercise_name_snapshot AS exercise_name,
+             ROW_NUMBER() OVER (
+               PARTITION BY workout_sessions.id
+               ORDER BY set_entries.weight * (1 + set_entries.reps / 30.0) DESC, set_entries.weight DESC
+             ) AS strength_rank
+           FROM workout_sessions
+           INNER JOIN workout_exercises
+             ON workout_exercises.workout_session_id = workout_sessions.id
+           INNER JOIN set_entries
+             ON set_entries.workout_exercise_id = workout_exercises.id
+           WHERE workout_sessions.completed_at IS NOT NULL AND set_entries.duration_seconds IS NULL AND set_entries.reps > 0
+         ) ranked_sets
+         WHERE ranked_sets.strength_rank = 1
+         ORDER BY ranked_sets.completed_at DESC
+         LIMIT ?;`,
+        [limit]
+      );
+
+  return rows.reverse().map(mapProgressStrengthPointRow);
 }
 
 export async function getProgressLiftOptions() {
@@ -159,7 +339,8 @@ export async function getProgressLiftOptions() {
      FROM workout_exercises
      INNER JOIN workout_sessions
        ON workout_sessions.id = workout_exercises.workout_session_id
-     WHERE workout_sessions.completed_at IS NOT NULL
+     INNER JOIN set_entries ON set_entries.workout_exercise_id = workout_exercises.id
+     WHERE workout_sessions.completed_at IS NOT NULL AND set_entries.duration_seconds IS NULL AND set_entries.reps > 0
      GROUP BY lift_key
      ORDER BY latest_completed_at DESC, name ASC;`
   );
@@ -188,7 +369,7 @@ export async function getProgressVolumeSeries(input: { liftKey?: string | null; 
            ON workout_exercises.workout_session_id = workout_sessions.id
          INNER JOIN set_entries
            ON set_entries.workout_exercise_id = workout_exercises.id
-         WHERE workout_sessions.completed_at IS NOT NULL
+         WHERE workout_sessions.completed_at IS NOT NULL AND set_entries.duration_seconds IS NULL AND set_entries.reps > 0
            AND COALESCE(workout_exercises.exercise_id, 'custom:' || lower(workout_exercises.exercise_name_snapshot)) = ?
          GROUP BY workout_sessions.id
          ORDER BY workout_sessions.completed_at DESC
@@ -205,7 +386,7 @@ export async function getProgressVolumeSeries(input: { liftKey?: string | null; 
            ON workout_exercises.workout_session_id = workout_sessions.id
          INNER JOIN set_entries
            ON set_entries.workout_exercise_id = workout_exercises.id
-         WHERE workout_sessions.completed_at IS NOT NULL
+         WHERE workout_sessions.completed_at IS NOT NULL AND set_entries.duration_seconds IS NULL AND set_entries.reps > 0
          GROUP BY workout_sessions.id
          ORDER BY workout_sessions.completed_at DESC
          LIMIT ?;`,
@@ -219,9 +400,38 @@ export async function getProgressVolumeSeries(input: { liftKey?: string | null; 
   }));
 }
 
-export async function createWorkoutSession() {
+let creatingSession: Promise<ActiveWorkoutSession> | null = null;
+type CreateSessionInput = { programPlan: WorkoutProgramPlan } | { followActiveProgram: true };
+
+export async function createWorkoutSession(input?: CreateSessionInput): Promise<ActiveWorkoutSession> {
+  // Serialize creation so a double tap or concurrent program launch cannot fork an active workout.
+  if (creatingSession) {
+    await creatingSession;
+  }
+  const operation = createStoredWorkoutSession(input);
+  creatingSession = operation;
+  try { return await operation; } finally { if (creatingSession === operation) creatingSession = null; }
+}
+
+async function createStoredWorkoutSession(input?: CreateSessionInput): Promise<ActiveWorkoutSession> {
+  const explicitPlan = input && "programPlan" in input;
+  let programPlan = explicitPlan ? parseWorkoutProgramPlan(input.programPlan) : null;
+  if (explicitPlan && !programPlan) throw new Error("This program is invalid. Edit and save it before starting a workout.");
+  const active = await getActiveWorkoutSession();
+  if (active) {
+    if (programPlan) throw new Error("Finish your active workout before starting a program.");
+    return active;
+  }
+  if (input && "followActiveProgram" in input) {
+    // Read the current program and local calendar date at creation time, not a stale screen snapshot.
+    const library = await getProgramLibrary();
+    const program = library.programs.find((item) => item.id === library.activeProgramId);
+    const day = program?.days[getScheduledDayIndex(program.schedule, program.days.length)];
+    if (program && day?.kind === "training") programPlan = toWorkoutProgramPlan(program, day.id);
+    // No program, future start dates, and rest days allow an unplanned workout.
+  }
   if (Platform.OS === "web") {
-    return createWebWorkoutSession();
+    return createWebWorkoutSession(programPlan);
   }
 
   const database = await getDatabase();
@@ -238,23 +448,41 @@ export async function createWorkoutSession() {
        id,
        profile_id,
        started_at,
+       program_plan_json,
        created_at,
        updated_at
      )
-     VALUES (?, ?, ?, ?, ?);`,
-    [id, profile?.id ?? null, now, now, now]
+     VALUES (?, ?, ?, ?, ?, ?);`,
+    [id, profile?.id ?? null, now, programPlan ? JSON.stringify(programPlan) : null, now, now]
   );
 
-  return { id, startedAt: now, exercises: [] };
+  return { id, startedAt: now, exercises: [], programPlan };
 }
 
-export async function addExerciseToWorkoutSession(input: {
+type AddExerciseInput = {
   sessionId: string;
   exercise: SessionExercise;
   sets: number;
   reps: number;
   weight: number;
-}) {
+  durationSeconds?: number | null;
+  programEntryId?: string | null;
+  actualSets?: WorkoutSet[];
+  prescription?: ProgramExercise;
+};
+
+export async function addExerciseToWorkoutSession(input: AddExerciseInput) {
+  validateWorkoutMeasurement(input);
+  const actualSets = getActualSets(input);
+  validateActualSets(actualSets);
+  if (actualSets.length !== input.sets) throw new Error("The set count does not match the recorded sets.");
+  if (input.prescription) {
+    validateExerciseTarget(input.prescription.target);
+    if (input.prescription.load) validateProgramLoad(input.prescription.load);
+    if (input.prescription.exerciseId !== input.exercise.id || !Number.isInteger(input.prescription.sets) || input.prescription.sets < 1 || input.prescription.sets > 12) throw new Error("Invalid exercise prescription.");
+  }
+  const session = await getActiveWorkoutSession();
+  if (!session || session.id !== input.sessionId) throw new Error("This workout is no longer active.");
   if (Platform.OS === "web") {
     return addExerciseToWebWorkoutSession(input);
   }
@@ -278,11 +506,13 @@ export async function addExerciseToWorkoutSession(input: {
          custom_exercise_name,
          exercise_name_snapshot,
          exercise_order,
+         program_entry_id,
+         prescription_json,
          saved_at,
          created_at,
          updated_at
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         workoutExerciseId,
         input.sessionId,
@@ -290,6 +520,8 @@ export async function addExerciseToWorkoutSession(input: {
         isCustomExercise ? input.exercise.name : null,
         input.exercise.name,
         nextOrder,
+        input.programEntryId ?? null,
+        input.prescription ? JSON.stringify(input.prescription) : null,
         now,
         now,
         now
@@ -299,10 +531,9 @@ export async function addExerciseToWorkoutSession(input: {
     await insertSetEntries({
       completedAt: now,
       database,
-      reps: input.reps,
       setEntries,
-      weight: input.weight,
-      workoutExerciseId
+      workoutExerciseId,
+      actualSets
     });
 
     await database.runAsync("UPDATE workout_sessions SET updated_at = ? WHERE id = ?;", [now, input.sessionId]);
@@ -314,7 +545,10 @@ export async function addExerciseToWorkoutSession(input: {
     sets: input.sets,
     reps: input.reps,
     weight: input.weight,
-    savedAt: now
+    durationSeconds: input.durationSeconds ?? null,
+    savedAt: now,
+    programEntryId: input.programEntryId ?? null,
+    actualSets, ...(input.prescription ? { prescription: input.prescription } : {})
   };
 }
 
@@ -350,6 +584,7 @@ export async function completeWorkoutSession(sessionId: string) {
 
 
 async function getWebWorkoutSessions() {
+  await ensureWebTrainingStorage();
   const storedSessions = await AsyncStorage.getItem(WEB_WORKOUT_SESSIONS_KEY);
 
   if (!storedSessions) {
@@ -365,6 +600,7 @@ async function getWebWorkoutSessions() {
 }
 
 async function saveWebWorkoutSessions(sessions: WebWorkoutSession[]) {
+  await ensureWebTrainingStorage();
   await AsyncStorage.setItem(WEB_WORKOUT_SESSIONS_KEY, JSON.stringify(sessions));
 }
 
@@ -386,10 +622,7 @@ async function getCompletedWebWorkoutSessions(limit: number) {
     .slice(0, limit)
     .map((session) => {
       const totalSets = session.exercises.reduce((sum, exercise) => sum + exercise.sets, 0);
-      const totalVolume = session.exercises.reduce(
-        (sum, exercise) => sum + exercise.sets * exercise.reps * exercise.weight,
-        0
-      );
+      const totalVolume = session.exercises.reduce((sum, exercise) => sum + getActualSets(exercise).reduce((v, set) => v + (set.durationSeconds == null ? set.reps * set.weight : 0), 0), 0);
 
       return {
         id: session.id,
@@ -397,7 +630,8 @@ async function getCompletedWebWorkoutSessions(limit: number) {
         completedAt: session.completedAt ?? session.updatedAt,
         exerciseCount: session.exercises.length,
         totalSets,
-        totalVolume
+        totalVolume,
+        totalDurationSeconds: session.exercises.reduce((sum, exercise) => sum + getActualSets(exercise).reduce((v, set) => v + (set.durationSeconds ?? 0), 0), 0)
       };
     });
 }
@@ -409,7 +643,7 @@ async function getWebProgressLiftOptions() {
   sessions
     .filter((session) => Boolean(session.completedAt))
     .forEach((session) => {
-      session.exercises.forEach((exercise) => {
+      session.exercises.filter((exercise) => exercise.durationSeconds == null).forEach((exercise) => {
         const key = getExerciseProgressKey(exercise.exercise.id, exercise.exercise.name);
         const completedAt = session.completedAt ?? session.updatedAt;
         const existing = liftOptions.get(key);
@@ -441,15 +675,73 @@ async function getWebProgressVolumeSeries(input: { liftKey?: string | null; limi
       id: session.id,
       completedAt: session.completedAt ?? session.updatedAt,
       volume: session.exercises
-        .filter((exercise) => !input.liftKey || getExerciseProgressKey(exercise.exercise.id, exercise.exercise.name) === input.liftKey)
-        .reduce((sum, exercise) => sum + exercise.sets * exercise.reps * exercise.weight, 0)
+        .filter((exercise) => exercise.durationSeconds == null && (!input.liftKey || getExerciseProgressKey(exercise.exercise.id, exercise.exercise.name) === input.liftKey))
+        .reduce((sum, exercise) => sum + getActualSets(exercise).reduce((v, set) => v + (set.durationSeconds == null ? set.reps * set.weight : 0), 0), 0)
     }))
     .filter((point) => point.volume > 0)
     .sort((first, second) => first.completedAt.localeCompare(second.completedAt))
     .slice(-limit);
 }
 
-async function createWebWorkoutSession() {
+async function getWebProgressAverageWeightSeries(input: { liftKey?: string | null; limit?: number }) {
+  const sessions = await getWebWorkoutSessions();
+  const limit = input.limit ?? 120;
+
+  return sessions
+    .filter((session) => Boolean(session.completedAt))
+    .map((session) => {
+      const matchingExercises = session.exercises.filter(
+        (exercise) => exercise.durationSeconds == null && (!input.liftKey || getExerciseProgressKey(exercise.exercise.id, exercise.exercise.name) === input.liftKey)
+      );
+      const totalVolume = matchingExercises.reduce(
+        (sum, exercise) => sum + getActualSets(exercise).reduce((v, set) => v + (set.durationSeconds == null ? set.reps * set.weight : 0), 0),
+        0
+      );
+      const totalReps = matchingExercises.reduce((sum, exercise) => sum + getActualSets(exercise).reduce((v, set) => v + (set.durationSeconds == null ? set.reps : 0), 0), 0);
+
+      return {
+        id: session.id,
+        completedAt: session.completedAt ?? session.updatedAt,
+        averageWeight: totalReps > 0 ? totalVolume / totalReps : 0,
+        totalReps
+      };
+    })
+    .filter((point) => point.totalReps > 0)
+    .sort((first, second) => first.completedAt.localeCompare(second.completedAt))
+    .slice(-limit);
+}
+
+async function getWebProgressStrengthSeries(input: { liftKey?: string | null; limit?: number }) {
+  const sessions = await getWebWorkoutSessions();
+  const limit = input.limit ?? 120;
+
+  return sessions
+    .filter((session) => Boolean(session.completedAt))
+    .map((session) => {
+      const bestExercise = session.exercises
+        .filter((exercise) => exercise.durationSeconds == null && (!input.liftKey || getExerciseProgressKey(exercise.exercise.id, exercise.exercise.name) === input.liftKey))
+        .flatMap((exercise) => getActualSets(exercise).filter((set) => set.durationSeconds == null).map((set) => ({
+          exerciseName: exercise.exercise.name,
+          estimatedOneRepMax: estimateOneRepMax(set.weight, set.reps),
+          reps: set.reps,
+          weight: set.weight
+        })))
+        .sort((first, second) => second.estimatedOneRepMax - first.estimatedOneRepMax || second.weight - first.weight)[0];
+
+      return bestExercise
+        ? {
+            id: session.id,
+            completedAt: session.completedAt ?? session.updatedAt,
+            ...bestExercise
+          }
+        : null;
+    })
+    .filter((point): point is ProgressStrengthPoint => Boolean(point))
+    .sort((first, second) => first.completedAt.localeCompare(second.completedAt))
+    .slice(-limit);
+}
+
+async function createWebWorkoutSession(programPlan: WorkoutProgramPlan | null) {
   const sessions = await getWebWorkoutSessions();
   const now = new Date().toISOString();
   const session = {
@@ -457,20 +749,15 @@ async function createWebWorkoutSession() {
     startedAt: now,
     completedAt: null,
     updatedAt: now,
-    exercises: []
+    exercises: [],
+    programPlan
   };
 
   await saveWebWorkoutSessions([session, ...sessions]);
   return toActiveWorkoutSession(session);
 }
 
-async function addExerciseToWebWorkoutSession(input: {
-  sessionId: string;
-  exercise: SessionExercise;
-  sets: number;
-  reps: number;
-  weight: number;
-}) {
+async function addExerciseToWebWorkoutSession(input: AddExerciseInput) {
   const sessions = await getWebWorkoutSessions();
   const sessionIndex = sessions.findIndex((session) => session.id === input.sessionId);
 
@@ -485,7 +772,10 @@ async function addExerciseToWebWorkoutSession(input: {
     sets: input.sets,
     reps: input.reps,
     weight: input.weight,
-    savedAt: now
+    durationSeconds: input.durationSeconds ?? null,
+    savedAt: now,
+    programEntryId: input.programEntryId ?? null,
+    actualSets: getActualSets(input), ...(input.prescription ? { prescription: input.prescription } : {})
   };
 
   const nextSessions = [...sessions];
@@ -536,7 +826,8 @@ function toActiveWorkoutSession(session: WebWorkoutSession): ActiveWorkoutSessio
   return {
     id: session.id,
     startedAt: session.startedAt,
-    exercises: session.exercises
+    exercises: session.exercises,
+    programPlan: parseWorkoutProgramPlan(session.programPlan)
   };
 }
 
@@ -553,8 +844,28 @@ function isWebWorkoutSession(value: unknown): value is WebWorkoutSession {
   );
 }
 
+function decodeProgramPlan(value: string | null) {
+  if (!value) return null;
+  try { return parseWorkoutProgramPlan(JSON.parse(value)); } catch { return null; }
+}
+
 function getExerciseProgressKey(exerciseId: string, exerciseName: string) {
   return exerciseId.startsWith("custom-") ? `custom:${exerciseName.toLowerCase()}` : exerciseId;
+}
+
+function estimateOneRepMax(weight: number, reps: number) {
+  return weight * (1 + reps / 30);
+}
+
+function mapProgressStrengthPointRow(row: ProgressStrengthPointRow): ProgressStrengthPoint {
+  return {
+    id: row.id,
+    completedAt: row.completed_at,
+    estimatedOneRepMax: row.estimated_one_rep_max,
+    weight: row.weight,
+    reps: row.reps,
+    exerciseName: row.exercise_name
+  };
 }
 
 async function getNextExerciseOrder(sessionId: string) {
@@ -572,22 +883,24 @@ async function getNextExerciseOrder(sessionId: string) {
 async function insertSetEntries(input: {
   completedAt: string;
   database: Awaited<ReturnType<typeof getDatabase>>;
-  reps: number;
   setEntries: { id: string; setNumber: number }[];
-  weight: number;
   workoutExerciseId: string;
+  actualSets: WorkoutSet[];
 }) {
   if (input.setEntries.length === 0) {
     return;
   }
 
-  const placeholders = input.setEntries.map(() => "(?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
-  const values = input.setEntries.flatMap((setEntry) => [
+  const placeholders = input.setEntries.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
+  const values = input.setEntries.flatMap((setEntry, index) => [
     setEntry.id,
     input.workoutExerciseId,
     setEntry.setNumber,
-    input.weight,
-    input.reps,
+    input.actualSets[index].weight,
+    input.actualSets[index].reps,
+    input.actualSets[index].durationSeconds ?? null,
+    input.actualSets[index].effort ?? null,
+    input.actualSets[index].warmup ? 1 : 0,
     input.completedAt,
     input.completedAt,
     input.completedAt
@@ -600,6 +913,9 @@ async function insertSetEntries(input: {
        set_number,
        weight,
        reps,
+       duration_seconds,
+       effort,
+       is_warmup,
        completed_at,
        created_at,
        updated_at
@@ -619,9 +935,12 @@ async function getWorkoutExercises(sessionId: string) {
        workout_exercises.exercise_name_snapshot,
        workout_exercises.exercise_order,
        workout_exercises.saved_at,
+       workout_exercises.program_entry_id,
+       workout_exercises.prescription_json,
        COUNT(set_entries.id) AS sets,
        COALESCE(MAX(set_entries.reps), 0) AS reps,
-       COALESCE(MAX(set_entries.weight), 0) AS weight
+       COALESCE(MAX(set_entries.weight), 0) AS weight,
+       MAX(set_entries.duration_seconds) AS duration_seconds
      FROM workout_exercises
      LEFT JOIN set_entries
        ON set_entries.workout_exercise_id = workout_exercises.id
@@ -631,7 +950,12 @@ async function getWorkoutExercises(sessionId: string) {
     [sessionId]
   );
 
-  return rows.map(mapWorkoutExerciseRow);
+  const sets = await database.getAllAsync<{ workout_exercise_id: string; reps: number; weight: number; duration_seconds: number | null; effort: WorkoutSet["effort"]; is_warmup: number }>(
+    `SELECT set_entries.* FROM set_entries INNER JOIN workout_exercises ON workout_exercises.id = set_entries.workout_exercise_id
+     WHERE workout_exercises.workout_session_id = ? ORDER BY set_number;`, [sessionId]);
+  return rows.map((row) => ({ ...mapWorkoutExerciseRow(row), actualSets: sets.filter((set) => set.workout_exercise_id === row.id).map((set) => ({
+    reps: set.reps, weight: set.weight, durationSeconds: set.duration_seconds, effort: set.effort, warmup: Boolean(set.is_warmup)
+  })) }));
 }
 
 function mapWorkoutExerciseRow(row: WorkoutExerciseRow): StoredSessionExercise {
@@ -653,6 +977,54 @@ function mapWorkoutExerciseRow(row: WorkoutExerciseRow): StoredSessionExercise {
     sets: row.sets,
     reps: row.reps,
     weight: row.weight,
-    savedAt: row.saved_at
+    durationSeconds: row.duration_seconds,
+    savedAt: row.saved_at,
+    programEntryId: row.program_entry_id,
+    ...(row.prescription_json ? { prescription: JSON.parse(row.prescription_json) as ProgramExercise } : {})
   };
+}
+
+/** Actual work only: duration is never stored in the reps column. */
+export function validateWorkoutMeasurement(input: { sets: number; reps: number; weight: number; durationSeconds?: number | null }) {
+  if (!Number.isInteger(input.sets) || input.sets < 1 || input.sets > 12) throw new Error("Choose 1–12 completed sets.");
+  if (!Number.isFinite(input.weight) || input.weight < 0 || input.weight > 10000) throw new Error("Enter a valid non-negative weight.");
+  if (input.durationSeconds != null) {
+    if (!Number.isInteger(input.durationSeconds) || input.durationSeconds < 1 || input.durationSeconds > 3600 || input.reps !== 0) throw new Error("Timed sets need 1–3600 seconds and no reps.");
+  } else if (!Number.isInteger(input.reps) || input.reps < 1 || input.reps > 100) {
+    throw new Error("Choose 1–100 completed reps per set.");
+  }
+}
+
+export function getActualSets(entry: { actualSets?: WorkoutSet[]; sets: number; reps: number; weight: number; durationSeconds?: number | null }): WorkoutSet[] {
+  return entry.actualSets ?? Array.from({ length: entry.sets }, () => ({ reps: entry.reps, weight: entry.weight, durationSeconds: entry.durationSeconds ?? null }));
+}
+
+export function validateActualSets(sets: WorkoutSet[]) {
+  if (!Array.isArray(sets) || sets.length < 1 || sets.length > 12) throw new Error("Record 1–12 sets.");
+  for (const set of sets) {
+    if (!set) throw new Error("Invalid set.");
+    validateWorkoutMeasurement({ ...set, sets: 1 });
+    if (set.effort != null && !["easy", "moderate", "hard"].includes(set.effort)) throw new Error("Choose a valid effort.");
+    if (set.warmup != null && typeof set.warmup !== "boolean") throw new Error("Choose a valid set type.");
+  }
+  if (sets.some((set) => (set.durationSeconds != null) !== (sets[0].durationSeconds != null))) throw new Error("Use either timed sets or rep sets for one exercise entry.");
+}
+
+/** Completed performance only. Rest days and imported programs never enter this feed. */
+export async function getCoachHistory(): Promise<ExerciseExposure[]> {
+  const result: ExerciseExposure[] = [];
+  if (Platform.OS === "web") {
+    const sessions = (await getWebWorkoutSessions()).filter((session) => session.completedAt).sort((a, b) => b.completedAt!.localeCompare(a.completedAt!)).slice(0, 120);
+    for (const session of sessions) {
+      for (const exercise of session.exercises) result.push({ sessionId: session.id, performedAt: exercise.savedAt,
+        exerciseId: exercise.exercise.id, actualSets: getActualSets(exercise), prescription: exercise.prescription });
+    }
+  } else {
+    const database = await getDatabase();
+    const sessions = await database.getAllAsync<{ id: string }>("SELECT id FROM workout_sessions WHERE completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 120;");
+    for (const session of sessions) for (const exercise of await getWorkoutExercises(session.id)) result.push({
+      sessionId: session.id, performedAt: exercise.savedAt, exerciseId: exercise.exercise.id, actualSets: getActualSets(exercise), prescription: exercise.prescription
+    });
+  }
+  return result;
 }

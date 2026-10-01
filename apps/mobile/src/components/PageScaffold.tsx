@@ -1,5 +1,6 @@
+import { createThemedStyles } from "../theme/designSystem";
 import { StyleSheet, Text, View } from "react-native";
-import { useAppTheme } from "../theme/ThemeProvider";
+import { useAppTheme, useThemeStyles } from "../theme/ThemeProvider";
 
 type PageScaffoldProps = {
   eyebrow: string;
@@ -10,6 +11,7 @@ type PageScaffoldProps = {
 };
 
 export function PageScaffold({ eyebrow, title, description, actions, highlights }: PageScaffoldProps) {
+  const { styles, colors, ui } = useThemeStyles(themedStyles);
   const theme = useAppTheme();
 
   return (
@@ -59,11 +61,12 @@ export function PageScaffold({ eyebrow, title, description, actions, highlights 
   );
 }
 
-const styles = StyleSheet.create({
+const themedStyles = createThemedStyles((colors, ui) => ({
   actionButton: {
+    ...ui.control,
     alignItems: "center",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 0,
+    borderWidth: 0,
+    borderRadius: 18,
     minHeight: 50,
     justifyContent: "center",
     minWidth: 188,
@@ -81,9 +84,9 @@ const styles = StyleSheet.create({
   },
   actionText: {
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
     textAlign: "center",
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   container: {
     alignItems: "center",
@@ -91,7 +94,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 24,
     paddingBottom: 112,
-    paddingTop: 72
+    paddingTop: 28,
   },
   description: {
     fontSize: 15,
@@ -102,10 +105,10 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "600",
     letterSpacing: 0,
     textAlign: "center",
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   header: {
     alignItems: "center",
@@ -114,7 +117,7 @@ const styles = StyleSheet.create({
   },
   highlightRow: {
     alignItems: "center",
-    paddingVertical: 14,
+    paddingVertical: 18,
     width: "100%"
   },
   highlightText: {
@@ -122,22 +125,23 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     lineHeight: 20,
     textAlign: "center",
-    textTransform: "uppercase"
+    textTransform: "none"
   },
   panel: {
+    ...ui.group,
     borderRadius: 0,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
     marginTop: 30,
     maxWidth: 360,
     paddingHorizontal: 20,
     width: "100%"
   },
   title: {
-    fontSize: 36,
-    fontWeight: "800",
+    fontSize: 32,
+    fontWeight: "600",
     letterSpacing: 0,
     marginTop: 10,
     textAlign: "center",
-    textTransform: "uppercase"
+    textTransform: "none"
   }
-});
+}));

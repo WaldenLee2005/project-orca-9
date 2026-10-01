@@ -1,40 +1,43 @@
 import "react-native-url-polyfill/auto";
-
-import { createClient } from "@supabase/supabase-js";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState, Platform } from "react-native";
+import { ACCOUNT_UNAVAILABLE_MESSAGE, createAuthClient, isAuthConfigured } from "./authClient";
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const config = {
+  url: process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ?? "",
+  publishableKey: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ?? ""
+};
 
-if (!supabaseUrl || !supabasePublishableKey) {
-  console.warn("Missing Supabase environment variables.");
+let client: ReturnType<typeof createAuthClient> = null;
+
+export function isSupabaseConfigured() {
+  return isAuthConfigured(config);
 }
 
-export const supabase = createClient(supabaseUrl ?? "", supabasePublishableKey ?? "", {
-  auth: {
-    autoRefreshToken: true,
-    detectSessionInUrl: false,
-    persistSession: false
+// No client, auth restore, or network request runs just from importing a screen.
+export function getOptionalSupabaseClient() {
+  if (!client) {
+    client = createAuthClient(config, AsyncStorage);
+    if (client && Platform.OS !== "web") {
+      const auth = client.auth;
+      const updateRefresh = (state: string) => {
+        if (state === "active") void auth.startAutoRefresh();
+        else void auth.stopAutoRefresh();
+      };
+      updateRefresh(AppState.currentState);
+      AppState.addEventListener("change", updateRefresh);
+    }
   }
-});
+  return client;
+}
+
+export function getSupabaseClient() {
+  const supabase = getOptionalSupabaseClient();
+  if (!supabase) throw new Error(ACCOUNT_UNAVAILABLE_MESSAGE);
+  return supabase;
+}
 
 export function getSupabaseConfig() {
-  if (!supabaseUrl || !supabasePublishableKey) {
-    throw new Error("Missing Supabase environment variables.");
-  }
-
-  return {
-    publishableKey: supabasePublishableKey,
-    url: supabaseUrl
-  };
-}
-
-if (Platform.OS !== "web") {
-  AppState.addEventListener("change", (state) => {
-    if (state === "active") {
-      supabase.auth.startAutoRefresh();
-    } else {
-      supabase.auth.stopAutoRefresh();
-    }
-  });
+  if (!isSupabaseConfigured()) throw new Error(ACCOUNT_UNAVAILABLE_MESSAGE);
+  return config;
 }
