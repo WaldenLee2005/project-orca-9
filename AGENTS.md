@@ -23,3 +23,9 @@ Read-only questions, reviews, and planning do not require empty commits or autho
 ## Git wording
 
 Keep branch names, commit messages, and any requested pull-request metadata focused on the app rather than assistant branding, subject to higher-priority tool or environment requirements. Do not override required branch prefixes.
+
+## Commit attribution
+
+All project commits must be attributed to the user's GitHub account, `WaldenLee2005`. Configure this repository locally with `user.name = WaldenLee2005`, `user.email = 134631614+WaldenLee2005@users.noreply.github.com`, and `user.useConfigOnly = true`. This is the account's ID-based private GitHub commit address; keep configuration scoped to this repository.
+
+Before committing, verify both `git var GIT_AUTHOR_IDENT` and `git var GIT_COMMITTER_IDENT` use that email. Repair missing repository-local configuration before proceeding; never accept a machine-inferred `.local` identity. An explicit environment override must also match the intended account. Keep the normal safe-push rules above for future work.

@@ -27,6 +27,8 @@ After each completed change, run the relevant checks, review the diff, commit th
 
 Keep Git metadata focused on the app, without assistant branding, subject to required tool/environment naming rules.
 
+Before committing, verify the repository-local author and committer identity using the Commit attribution instructions in AGENTS.md. Project commits belong to WaldenLee2005 and must use the account's configured GitHub private commit email, not a machine-inferred address.
+
 For this chat, focus on: [replace with module or task].
 ```
 
