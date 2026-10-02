@@ -13,7 +13,8 @@ state.storage = {
 state.database = {
   async getAllAsync(sql, params = []) { if (state.failRead) throw new Error("Storage unavailable"); return state.sql.prepare(sql).all(...params); },
   async getFirstAsync(sql, params = []) { if (state.failRead) throw new Error("Storage unavailable"); return state.sql.prepare(sql).get(...params) ?? null; },
-  async runAsync(sql, params = []) { if (state.failWrite) throw new Error("Disk full"); state.writes++; return state.sql.prepare(sql).run(...params); }
+  async runAsync(sql, params = []) { if (state.failWrite) throw new Error("Disk full"); state.writes++; return state.sql.prepare(sql).run(...params); },
+  async withTransactionAsync(callback) { state.sql.exec("BEGIN"); try { await callback(); state.sql.exec("COMMIT"); } catch (error) { state.sql.exec("ROLLBACK"); throw error; } }
 };
 globalThis.__orcaReminderStorageTest = state;
 const modules = {
@@ -25,7 +26,7 @@ const modules = {
 };
 registerHooks({ resolve(specifier, context, nextResolve) {
   if (["./trainingStorage", "./trainingChanges", "./programsRepository"].includes(specifier)) return nextResolve(new URL(`../src/storage/${specifier.slice(2)}.ts`, import.meta.url).href, context);
-  if (specifier === "../features/programs/programModel") return nextResolve(new URL("../src/features/programs/programModel.ts", import.meta.url).href, context);
+  if (["../features/programs/programModel", "../programs/programModel"].includes(specifier)) return nextResolve(new URL("../src/features/programs/programModel.ts", import.meta.url).href, context);
   if (/\/(programsRepository|workoutsRepository|streaksRepository|reminderRepository|trainingStorage)\.ts$/.test(context.parentURL ?? "") && modules[specifier]) {
     return { shortCircuit: true, url: `data:text/javascript,${encodeURIComponent(modules[specifier])}` };
   }
@@ -36,6 +37,8 @@ const { subscribeToTrainingChanges, emitTrainingChange } = await import("../src/
 const programs = await import("../src/storage/programsRepository.ts");
 const workouts = await import("../src/storage/workoutsRepository.ts");
 const streaks = await import("../src/storage/streaksRepository.ts");
+const { buildReminderPlan } = await import("../src/features/reminders/reminderPlan.ts");
+const { localDateKey } = await import("../src/features/programs/programModel.ts");
 const schemaSource = readFileSync(new URL("../src/storage/database.ts", import.meta.url), "utf8");
 const schema = schemaSource.match(/async function ensureCoreTables[\s\S]*?execAsync\(`([\s\S]*?)`\);/)[1];
 const timestamps = ["2026-09-29T23:30:00.000Z", "2026-09-30T02:15:00.000Z"];
@@ -155,6 +158,90 @@ for (const platform of ["web", "ios"]) {
     await programs.saveTrainingProgram(programDraft());
     assert.equal(changes, 5, "unsubscribed observers stop receiving changes");
     await Promise.all(observedHistory);
+  });
+
+  test(`${platform}: active-program changes keep session plans, reminders and historical rest streaks in sync`, async (t) => {
+    setup(t, platform);
+    const clock = (day, hour = 6) => t.mock.timers.setTime(new Date(2026, 8, day, hour).getTime());
+    t.mock.timers.enable({ apis: ["Date"], now: new Date(2026, 8, 1, 6).getTime() });
+    let changes = 0;
+    const unsubscribe = subscribeToTrainingChanges(() => { changes++; });
+    t.after(unsubscribe);
+    const reminderPlan = async () => buildReminderPlan({ ...(await getReminderHistory()), now: new Date(), fallbackMinute: 18 * 60, restMinute: 8 * 60 });
+    const todayKinds = async () => (await reminderPlan()).reminders.filter((reminder) => reminder.dateKey === localDateKey()).map((reminder) => reminder.kind);
+    const snapshot = async () => ({ history: await getReminderHistory(), library: await programs.getProgramLibrary(), streak: await streaks.getStreakSummary(), session: await workouts.getActiveWorkoutSession(), plan: await reminderPlan() });
+    async function rejectWrite(action) {
+      const before = await snapshot(), observed = changes;
+      state.failWrite = true;
+      try { await assert.rejects(action, /Disk full/); }
+      finally { state.failWrite = false; }
+      assert.equal(changes, observed, "a failed write must not request a reminder refresh");
+      assert.deepEqual(await snapshot(), before, "a failed write must preserve the schedule, session, notifications and streak");
+    }
+
+    const first = await programs.saveTrainingProgram(programDraft());
+    const second = await programs.saveTrainingProgram({ ...programDraft(), name: "Later recovery cycle", schedule: { mode: "cycle", startDate: "2026-09-02" } });
+    assert.equal(changes, 2);
+    assert.deepEqual((await getReminderHistory()).scheduleHistory, [], "saving a library entry leaves reminders and streaks unplanned");
+    assert.deepEqual((await reminderPlan()).reminders.filter((reminder) => reminder.dateKey === "2026-09-02").map((reminder) => reminder.kind), ["workout", "streak"]);
+    await rejectWrite(() => programs.setActiveTrainingProgram(first.id));
+    await programs.setActiveTrainingProgram(first.id);
+    assert.equal(changes, 3);
+    assert.deepEqual((await reminderPlan()).reminders.filter((reminder) => reminder.dateKey === "2026-09-02").map((reminder) => reminder.kind), ["rest"]);
+    const firstSession = await workouts.createWorkoutSession({ followActiveProgram: true });
+    assert.equal(firstSession.programPlan.programId, first.id);
+    assert.equal((await streaks.getStreakSummary()).currentStreak, 0, "a planned workout earns no streak credit before completion");
+    clock(1, 18);
+    await workouts.addExerciseToWorkoutSession({ sessionId: firstSession.id, exercise: { id: "bench", name: "Bench Press", image: 1 }, programEntryId: "bench", sets: 3, reps: 8, weight: 100 });
+    await workouts.completeWorkoutSession(firstSession.id);
+    assert.equal(changes, 4);
+    assert.deepEqual(await todayKinds(), [], "actual completion suppresses the day's remaining notifications");
+
+    clock(2);
+    let summary = await streaks.getStreakSummary();
+    assert.deepEqual([summary.currentStreak, summary.currentActiveDays, summary.currentRestDays, summary.todayStatus], [2, 1, 1, "rest"]);
+    assert.deepEqual(await todayKinds(), ["rest"], "the same scheduled recovery day drives the reminder and streak");
+    clock(3);
+    const unfinished = await workouts.createWorkoutSession({ followActiveProgram: true });
+    assert.equal(unfinished.programPlan.programId, first.id);
+    await rejectWrite(() => programs.setActiveTrainingProgram(second.id));
+    await programs.setActiveTrainingProgram(second.id);
+    assert.equal(changes, 5);
+    summary = await streaks.getStreakSummary();
+    assert.deepEqual([summary.currentStreak, summary.currentActiveDays, summary.currentRestDays, summary.todayStatus], [3, 1, 2, "rest"]);
+    assert.deepEqual(summary.activeDates, ["2026-09-01", "2026-09-02", "2026-09-03"], "switching preserves earlier rest from the first program");
+    assert.deepEqual(await todayKinds(), ["rest"]);
+    assert.deepEqual((await workouts.getActiveWorkoutSession()).programPlan, unfinished.programPlan, "a switch cannot replace an unfinished workout");
+
+    clock(4);
+    assert.deepEqual(await todayKinds(), ["workout", "streak"]);
+    const edited = { ...second, days: second.days.map((day, index) => ({ ...day, kind: index === 0 ? "rest" : "training", exercises: index === 0 ? day.exercises : [{ ...first.days[0].exercises[0], id: "new-bench" }] })) };
+    await rejectWrite(() => programs.saveTrainingProgram(edited));
+    await programs.saveTrainingProgram(edited);
+    assert.equal(changes, 6);
+    assert.deepEqual(await todayKinds(), ["rest"], "an active edit replaces today's training notices with recovery");
+    summary = await streaks.getStreakSummary();
+    assert.deepEqual([summary.currentStreak, summary.currentActiveDays, summary.currentRestDays], [4, 1, 3]);
+    assert.deepEqual(summary.activeDates, ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"]);
+    assert.deepEqual((await workouts.getActiveWorkoutSession()).programPlan, unfinished.programPlan, "an active edit cannot change a stored workout prescription");
+
+    await rejectWrite(() => programs.setActiveTrainingProgram(null));
+    await programs.setActiveTrainingProgram(null);
+    assert.equal(changes, 7);
+    assert.equal((await programs.getProgramLibrary()).activeProgramId, null);
+    assert.deepEqual(await todayKinds(), ["workout", "streak"], "deactivation returns today's ordinary workout reminders");
+    summary = await streaks.getStreakSummary();
+    assert.deepEqual([summary.currentStreak, summary.currentActiveDays, summary.currentRestDays, summary.todayStatus], [3, 1, 2, "open"]);
+    assert.deepEqual(summary.activeDates, ["2026-09-01", "2026-09-02", "2026-09-03"], "deactivation removes only today's scheduled rest, preserving history");
+    const resumed = await workouts.createWorkoutSession({ followActiveProgram: true });
+    assert.equal(resumed.id, unfinished.id);
+    assert.deepEqual(resumed.programPlan, unfinished.programPlan);
+    await workouts.addExerciseToWorkoutSession({ sessionId: resumed.id, exercise: { id: "bench", name: "Bench Press", image: 1 }, sets: 1, reps: 8, weight: 100 });
+    await workouts.completeWorkoutSession(resumed.id);
+    assert.deepEqual(await todayKinds(), [], "ordinary completion still cancels notifications after a program is deactivated");
+    const unplanned = await workouts.createWorkoutSession({ followActiveProgram: true });
+    assert.equal(unplanned.programPlan, null, "the following session uses normal manual tracking");
+    assert.equal(state.values.get("sb-test-auth-token"), "untouched auth");
   });
 }
 

@@ -39,6 +39,7 @@ import { ScreenHeading } from "../../src/components/ScreenHeading";
 import { StreakCard } from "../../src/components/StreakCard";
 import { formatProgramPrescription, formatDuration, getPendingProgramExercises, getProgramDayName, getScheduledDayIndex, localDateKey, toWorkoutProgramPlan, type ProgramExercise, type WorkoutProgramPlan, type TrainingProgram } from "../../src/features/programs/programModel";
 import { getProgramLibrary, getTrainingProgram } from "../../src/storage/programsRepository";
+import { subscribeToTrainingChanges } from "../../src/storage/trainingChanges";
 
 import { CoachedSetLogger } from "../../src/features/coach/CoachedSetLogger";
 import { ReadinessCheck } from "../../src/features/coach/CoachControls";
@@ -60,6 +61,8 @@ export default function WorkoutsScreen() {
   const handledProgramRequest = useRef<string | null>(null);
   const savingExercise = useRef(false);
   const startingSession = useRef(false);
+  const trainingRefreshRequest = useRef(0);
+  const isTrainingScreenFocused = useRef(false);
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [isSavingExercise, setIsSavingExercise] = useState(false);
   const [programPlan, setProgramPlan] = useState<WorkoutProgramPlan | null>(null);
@@ -80,6 +83,28 @@ export default function WorkoutsScreen() {
   const [selectedExercise, setSelectedExercise] = useState<SessionExercise | null>(null);
   const [customExerciseName, setCustomExerciseName] = useState("");
   const [readiness, setReadiness] = useState<Readiness>({ ...DEFAULT_READINESS });
+
+  const refreshTrainingState = useCallback(async function refresh(): Promise<void> {
+    if (!isTrainingScreenFocused.current) return;
+    const request = ++trainingRefreshRequest.current;
+    const date = localDateKey();
+    try {
+      const [summary, library] = await Promise.all([getStreakSummary(), getProgramLibrary()]);
+      if (!isTrainingScreenFocused.current || request !== trainingRefreshRequest.current) return;
+      if (date !== localDateKey()) {
+        await refresh();
+        return;
+      }
+      setStreak(summary);
+      setScheduleDate(date);
+      setScheduleError(null);
+      setScheduledProgram(library.programs.find((program) => program.id === library.activeProgramId) ?? null);
+    } catch {
+      if (isTrainingScreenFocused.current && request === trainingRefreshRequest.current) {
+        setScheduleError("Could not refresh your schedule and streak. Return to this tab to retry.");
+      }
+    }
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -116,20 +141,33 @@ export default function WorkoutsScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => {
-    let active = true, lastDate = localDateKey();
-    async function refresh() {
-      try {
-        const [summary, library] = await Promise.all([getStreakSummary(), getProgramLibrary()]);
-        if (!active) return;
-        setStreak(summary); setScheduleDate(localDateKey()); setScheduleError(null);
-        setScheduledProgram(library.programs.find((program) => program.id === library.activeProgramId) ?? null);
-      } catch { if (active) setScheduleError("Could not refresh your schedule and streak. Return to this tab to retry."); }
-    }
-    void refresh();
-    const subscription = AppState.addEventListener("change", (state) => { if (state === "active") { setReadiness({ ...DEFAULT_READINESS }); void refresh(); } });
-    const timer = setInterval(() => { const today = localDateKey(); if (today !== lastDate) { lastDate = today; setReadiness({ ...DEFAULT_READINESS }); void refresh(); } }, 30000);
-    return () => { active = false; subscription.remove(); clearInterval(timer); };
-  }, []));
+    isTrainingScreenFocused.current = true;
+    let lastDate = localDateKey();
+    void refreshTrainingState();
+    const unsubscribe = subscribeToTrainingChanges(() => { void refreshTrainingState(); });
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        lastDate = localDateKey();
+        setReadiness({ ...DEFAULT_READINESS });
+        void refreshTrainingState();
+      }
+    });
+    const timer = setInterval(() => {
+      const today = localDateKey();
+      if (today !== lastDate) {
+        lastDate = today;
+        setReadiness({ ...DEFAULT_READINESS });
+        void refreshTrainingState();
+      }
+    }, 30000);
+    return () => {
+      isTrainingScreenFocused.current = false;
+      trainingRefreshRequest.current += 1;
+      unsubscribe();
+      subscription.remove();
+      clearInterval(timer);
+    };
+  }, [refreshTrainingState]));
 
   useEffect(() => {
     if (!exerciseId) {
@@ -180,18 +218,10 @@ export default function WorkoutsScreen() {
   const pendingProgramExercises = getPendingProgramExercises(programPlan, loggedExercises);
   const scheduledDay = scheduledProgram?.days[getScheduledDayIndex(scheduledProgram.schedule, scheduledProgram.days.length, scheduleDate)];
 
-  async function loadStreak() {
-    try {
-      setStreak(await getStreakSummary());
-    } catch (error) {
-      console.warn("Could not load streak summary", error);
-    }
-  }
-
   async function saveRestDay() {
     try {
       await markTodayAsRestDay();
-      await loadStreak();
+      await refreshTrainingState();
       setSessionNotice("Rest day logged. Your streak is protected.");
     } catch (error) {
       console.warn("Could not save rest day", error);
@@ -211,17 +241,17 @@ export default function WorkoutsScreen() {
     }
   }
 
-  async function startSession() {
+  async function startSession(followActiveProgram = true) {
     if (startingSession.current || !isSessionReady) return false;
     startingSession.current = true;
     setIsStartingSession(true);
     setStorageError(null);
     setSessionNotice(null);
 
-    const operation = trackDevOperation("Create workout session", "Opening today's active-program workout or an unplanned session.");
+    const operation = trackDevOperation("Create workout session", followActiveProgram ? "Opening today's active-program workout or an unplanned session." : "Opening an unplanned workout.");
 
     try {
-      const session = await createWorkoutSession({ followActiveProgram: true });
+      const session = await createWorkoutSession(followActiveProgram ? { followActiveProgram: true } : undefined);
       setSessionId(session.id);
       setSessionStartedAt(session.startedAt);
       setLoggedExercises(session.exercises);
@@ -410,7 +440,7 @@ export default function WorkoutsScreen() {
       setSessionNotice("Session saved.");
       setReadiness({ ...DEFAULT_READINESS });
       await loadPreviousSessions();
-      await loadStreak();
+      await refreshTrainingState();
       setStep("start");
       operation.resolve(`Completed ${resolvedSessionId}.`);
     } catch (error) {
@@ -434,7 +464,7 @@ export default function WorkoutsScreen() {
             <View style={styles.heroTopRow}><Text style={[styles.eyebrow, { color: theme.colors.mutedText }]}>{scheduledProgram ? "YOUR PROGRAM" : "YOUR SESSION"}</Text><Ionicons name="calendar-outline" size={20} color={theme.colors.mutedText} /></View>
             <Text style={[styles.startTitle, { color: theme.colors.text }]}>{scheduledDay && scheduledProgram ? getProgramDayName(scheduledProgram, scheduledDay) : "Ready to train?"}</Text>
             <Text style={[styles.startCopy, { color: theme.colors.secondaryText }]}>
-              {scheduledDay?.kind === "training" ? `${scheduledProgram!.name} · ${scheduledDay.exercises.length} exercises · ${scheduledDay.exercises.reduce((sum, entry) => sum + entry.sets, 0)} sets` : scheduledDay?.kind === "rest" ? "Scheduled recovery. Your streak is protected. You can still start an extra workout." : scheduledProgram ? `Your program starts ${scheduledProgram.schedule.startDate}. Until then, you can log an unplanned workout.` : "Choose your exercises and record each completed set. No account required."}
+              {scheduledDay?.kind === "training" ? `${scheduledProgram!.name} · ${scheduledDay.exercises.length} exercises · ${scheduledDay.exercises.reduce((sum, entry) => sum + entry.sets, 0)} sets` : scheduledDay?.kind === "rest" ? `${scheduledProgram!.name} · Scheduled recovery. Your streak is protected. You can still start an extra workout.` : scheduledProgram ? `Your program starts ${scheduledProgram.schedule.startDate}. Until then, you can log an unplanned workout.` : "Choose your exercises and record each completed set. No account required."}
             </Text>
             {sessionNotice ? <Text style={[styles.noticeText, { color: theme.colors.secondaryText }]}>{sessionNotice}</Text> : null}
             {storageError ? <Text style={[styles.errorText, { color: theme.colors.accent }]}>{storageError}</Text> : null}
@@ -443,7 +473,7 @@ export default function WorkoutsScreen() {
           <Pressable
             accessibilityRole="button"
             disabled={!isSessionReady || isStartingSession}
-            onPress={startSession}
+            onPress={() => { void startSession(); }}
             style={({ pressed }) => [
               styles.primaryButton,
               {
@@ -455,7 +485,15 @@ export default function WorkoutsScreen() {
             <Ionicons name="play" size={18} color={theme.colors.onAccent} />
             <Text style={[styles.primaryButtonText, { color: theme.colors.onAccent }]}>{isStartingSession ? "Opening workout…" : isSessionReady ? scheduledDay?.kind === "rest" ? "Start an extra workout" : "Start workout" : "Loading session…"}</Text>
           </Pressable>
-
+          {scheduledDay?.kind === "training" ? <Pressable
+            accessibilityRole="button"
+            accessibilityHint="Choose exercises yourself for this session. Your active program stays selected."
+            disabled={!isSessionReady || isStartingSession}
+            onPress={() => { void startSession(false); }}
+            style={({ pressed }) => [styles.manualSessionButton, { opacity: !isSessionReady || isStartingSession ? 0.55 : pressed ? 0.78 : 1 }]}
+          >
+            <Text style={styles.manualSessionButtonText}>Start without program</Text>
+          </Pressable> : null}
         </View>
 
         {scheduledDay?.kind === "training" ? <View style={styles.plannedSection}>
@@ -465,7 +503,7 @@ export default function WorkoutsScreen() {
           </View>)}</View>
         </View> : null}
         <Pressable accessibilityRole="button" onPress={() => router.push("/programs")} style={styles.scheduleLink}>
-          <Text style={styles.scheduleLinkText}>{scheduledProgram ? "View program schedule" : "Set up a training program"}</Text><Ionicons name="chevron-forward" size={16} color={colors.accent} />
+          <Text style={styles.scheduleLinkText}>{scheduledProgram ? "Change or deactivate program" : "Select a training program"}</Text><Ionicons name="chevron-forward" size={16} color={colors.accent} />
         </Pressable>
         {scheduleError ? <Text accessibilityRole="alert" style={styles.storageError}>{scheduleError}</Text> : null}
         <CoachOverview />
@@ -1172,6 +1210,21 @@ const themedStyles = createThemedStyles((colors, ui) => ({
     fontSize: 14,
     fontWeight: "600",
     textTransform: "none"
+  },
+  manualSessionButton: {
+    ...ui.control,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 10,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  manualSessionButtonText: {
+    color: colors.accent,
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
   },
   saveButton: {
     ...ui.primary,

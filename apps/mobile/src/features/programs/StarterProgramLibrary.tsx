@@ -16,7 +16,7 @@ export function StarterProgramLibrary({ onUse, disabled }: { onUse: (starter: St
     <Text style={styles.caption}>Moderate-volume gym plans. Preview the schedule, then make an editable copy.</Text>
     <View style={styles.cards}>{STARTER_PROGRAMS.map((starter) => <StarterCard key={starter.id} starter={starter} expanded={expanded === starter.id}
       onToggle={() => setExpanded(expanded === starter.id ? null : starter.id)} onUse={() => onUse(starter)} disabled={disabled} />)}</View>
-    <Text style={styles.caption}>With a program ON, scheduled rest days protect your streak without logging. A missed training day breaks it once that day ends.</Text>
+    <Text style={styles.caption}>With an active program, scheduled rest days protect your streak without logging. A missed training day breaks it once that day ends.</Text>
   </View>;
 }
 
@@ -56,7 +56,7 @@ function StarterCard({ starter, expanded, onToggle, onUse, disabled }: {
         style={({ pressed }) => [ui.primary, styles.use, { opacity: disabled ? 0.45 : pressed ? 0.75 : 1 }]}>
         <Text style={styles.useText}>Use this program</Text><Ionicons name="arrow-forward" size={18} color={colors.onAccent} />
       </Pressable>
-      <Text style={styles.caption}>Review the start date and save your copy. It stays OFF until you turn it on; then rest days protect your streak without logging.</Text>
+      <Text style={styles.caption}>Review the start date and save your copy. It stays inactive until you activate it; then rest days protect your streak without logging.</Text>
     </View> : null}
   </View>;
 }

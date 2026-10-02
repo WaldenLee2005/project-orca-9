@@ -2,7 +2,7 @@ import { useThemeStyles } from "../../theme/ThemeProvider";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { AppState, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { ScreenHeading } from "../../components/ScreenHeading";
 import { ExerciseBrowser } from "../exercises/ExerciseBrowser";
 import { ProgramExerciseList, type ProgramScrollMetrics } from "./ProgramExerciseList";
@@ -12,6 +12,7 @@ import { sessionExercises, type CatalogExercise } from "../workouts/repdbSession
 import { createLocalId } from "../../storage/database";
 import { deleteTrainingProgram, getProgramLibrary, saveTrainingProgram, setActiveTrainingProgram } from "../../storage/programsRepository";
 import { getActiveWorkoutSession } from "../../storage/workoutsRepository";
+import { subscribeToTrainingChanges } from "../../storage/trainingChanges";
 import { createThemedStyles } from "../../theme/designSystem";
 import { ProgramImportScreen } from "./ProgramImportScreen";
 import { StarterProgramLibrary } from "./StarterProgramLibrary";
@@ -29,6 +30,7 @@ export default function ProgramsScreen() {
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [previewDays, setPreviewDays] = useState<Record<string, number>>({});
   const [activeProgramId, setActiveProgramId] = useState<string | null>(null);
+  const [scheduleDate, setScheduleDate] = useState(localDateKey());
   const [followConfirm, setFollowConfirm] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [lastAdded, setLastAdded] = useState("");
@@ -36,6 +38,7 @@ export default function ProgramsScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [discarding, setDiscarding] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -43,21 +46,37 @@ export default function ProgramsScreen() {
   const [starting, setStarting] = useState<string | null>(null);
   const baseline = useRef("");
   const busy = useRef(false);
+  const loadVersion = useRef(0);
   const scrollRef = useRef<ScrollView>(null);
   const scrollMetrics = useRef<ProgramScrollMetrics>({ offset: 0, height: 0, contentHeight: 0, top: 0 });
   const [reloadKey, setReloadKey] = useState(0);
 
   useFocusEffect(useCallback(() => {
-    let active = true;
+    let active = true, lastDate = localDateKey();
     setIsLoading(true);
     setBlockedProgram(null);
-    getProgramLibrary().then((result) => {
-      if (active) { setPrograms(result.programs); setActiveProgramId(result.activeProgramId); setError(null); }
-    }).catch((cause) => {
-      if (active) setError(cause instanceof Error ? cause.message : "Could not load your programs. Please try again.");
-    }).finally(() => { if (active) setIsLoading(false); });
-    return () => { active = false; };
+    async function refresh() {
+      const version = ++loadVersion.current;
+      try {
+        const result = await getProgramLibrary();
+        if (!active || version !== loadVersion.current) return;
+        setPrograms(result.programs); setActiveProgramId(result.activeProgramId); setScheduleDate(localDateKey()); setLibraryError(null);
+      } catch (cause) {
+        if (active && version === loadVersion.current) setLibraryError(cause instanceof Error ? cause.message : "Could not load your programs. Please try again.");
+      } finally { if (active && version === loadVersion.current) setIsLoading(false); }
+    }
+    setError(null);
+    void refresh();
+    const unsubscribe = subscribeToTrainingChanges(() => { void refresh(); });
+    const subscription = AppState.addEventListener("change", (state) => { if (state === "active") void refresh(); });
+    const timer = setInterval(() => { const today = localDateKey(); if (today !== lastDate) { lastDate = today; void refresh(); } }, 30000);
+    return () => { active = false; unsubscribe(); subscription.remove(); clearInterval(timer); };
   }, [reloadKey]));
+
+  const activeProgram = programs.find((program) => program.id === activeProgramId);
+  const activeDayIndex = activeProgram ? getScheduledDayIndex(activeProgram.schedule, activeProgram.days.length, scheduleDate) : -1;
+  const activeDay = activeProgram?.days[activeDayIndex];
+  const displayedPrograms = [...programs].sort((a, b) => Number(b.id === activeProgramId) - Number(a.id === activeProgramId));
 
   const selectedDay = draft?.days[selectedDayIndex];
   const addedCounts = useMemo(() => {
@@ -111,36 +130,37 @@ export default function ProgramsScreen() {
   async function save() {
     if (!draft || busy.current || isDragging) return;
     if (imported && !importScheduleConfirmed) { setError("Confirm the imported schedule and rest days before saving."); return; }
-    busy.current = true; setIsSaving(true); setError(null);
+    busy.current = true; ++loadVersion.current; setIsSaving(true); setError(null);
     try {
       const program = await saveTrainingProgram(draft);
       setPrograms((current) => [program, ...current.filter((item) => item.id !== program.id)]);
-      setDraft(null); setNotice(`${program.name} saved on this device.${activeProgramId === program.id ? " Active schedule updated from today; earlier streak history is unchanged." : " Turn it on to automatically load today's exercises and protect rest days."}`); setDiscarding(false);
+      setDraft(null); setNotice(`${program.name} saved on this device.${activeProgramId === program.id ? " Active schedule updated from today; earlier streak history is unchanged." : " Activate it to automatically load today's exercises and protect rest days."}`); setDiscarding(false);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save your program. Your changes are still here."); }
-    finally { busy.current = false; setIsSaving(false); }
+    finally { busy.current = false; setIsSaving(false); setIsLoading(false); }
   }
 
   async function removeProgram(program: TrainingProgram) {
     if (busy.current) return;
-    busy.current = true; setIsSaving(true); setError(null);
+    busy.current = true; ++loadVersion.current; setIsSaving(true); setError(null);
     try {
       await deleteTrainingProgram(program.id);
       if (activeProgramId === program.id) setActiveProgramId(null);
       setPrograms((current) => current.filter((item) => item.id !== program.id));
       setDeleting(null); setNotice(`${program.name} deleted. Workout history is unchanged.`);
     } catch { setError("Could not delete that program. Please try again."); }
-    finally { busy.current = false; setIsSaving(false); }
+    finally { busy.current = false; setIsSaving(false); setIsLoading(false); }
   }
 
   async function followProgram(id: string | null) {
     if (busy.current) return;
-    busy.current = true; setIsSaving(true); setError(null);
+    busy.current = true; ++loadVersion.current; setIsSaving(true); setError(null);
     try {
       await setActiveTrainingProgram(id);
       setActiveProgramId(id); setFollowConfirm(null);
-      setNotice(id ? "Program on. Start Session loads today’s exercises, and planned rest days protect your streak from today or the start date, whichever is later." : "Program off from today. Existing workouts and earlier rest-day history are unchanged.");
+      const name = programs.find((program) => program.id === id)?.name;
+      setNotice(id ? `${name ?? "Program"} is now active. Scheduled training days fill automatically in Session. Enabled reminders follow the schedule, and planned rest days protect your streak.` : "Program deactivated. New sessions use normal tracking. Enabled reminders return to your regular workout timing; earlier rest days and existing workouts are preserved.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not change the active schedule."); }
-    finally { busy.current = false; setIsSaving(false); }
+    finally { busy.current = false; setIsSaving(false); setIsLoading(false); }
   }
 
   async function startProgram(program: TrainingProgram, day: ProgramDay) {
@@ -184,7 +204,7 @@ export default function ProgramsScreen() {
         <ScreenHeading eyebrow="Orca · Program builder" title={draft.id ? "Edit program" : "New program"} subtitle="Choose a schedule, rest days, and exercise targets." />
         {starterName ? <View style={styles.starterNote}>
           <Text style={styles.label}>Your copy of {starterName}</Text>
-          <Text style={styles.body}>Review the start date and each day below. Everything is editable. Saving leaves the program OFF; turn it on to automatically load workouts and protect rest days without logging.</Text>
+          <Text style={styles.body}>Review the start date and each day below. Everything is editable. Save your copy, then activate it to automatically load workouts and protect rest days without logging.</Text>
           <Text style={styles.caption}>{STARTER_GUIDANCE}</Text>
         </View> : null}
         {discarding ? <Confirm title="Discard unsaved changes?" description="Your saved program will stay unchanged." confirmLabel="Discard changes" disabled={isSaving}
@@ -199,7 +219,7 @@ export default function ProgramsScreen() {
         {imported ? <Pressable accessibilityRole="checkbox" accessibilityLabel="Confirm imported schedule and rest days" accessibilityState={{ checked: importScheduleConfirmed }}
           disabled={isSaving || isDragging} onPress={() => setImportScheduleConfirmed(!importScheduleConfirmed)} style={[styles.namePanel, { flexDirection: "row", gap: 12, alignItems: "center" }]}>
           <Ionicons name={importScheduleConfirmed ? "checkbox" : "square-outline"} size={26} color={colors.accent} />
-          <Text style={[styles.body, { flex: 1 }]}>I've checked the imported schedule, start date and every training/rest day. Saving keeps this program OFF until I turn it on.</Text>
+          <Text style={[styles.body, { flex: 1 }]}>I've checked the imported schedule, start date and every training/rest day. Saving keeps this program inactive until I activate it.</Text>
         </Pressable> : null}
         {selectedDay.kind === "training" ? <>
         <View style={styles.sectionHeader}>
@@ -226,16 +246,32 @@ export default function ProgramsScreen() {
   return (
     <ScrollView key="program-list" style={styles.screen} contentContainerStyle={ui.content}>
       <ScreenHeading eyebrow="Orca · Your training" title="Programs" subtitle="Your schedule, exercises, and rest days." />
+      {!isLoading && !libraryError ? <View style={styles.activePanel}>
+        <View style={styles.statusRow}><Ionicons name={activeProgram ? "checkmark-circle" : "barbell-outline"} size={22} color={colors.accent} />
+          <Text style={styles.activeLabel}>{activeProgram ? "Active program" : "No active program"}</Text></View>
+        <Text style={styles.programName}>{activeProgram?.name ?? "Track your way"}</Text>
+        {activeProgram ? <>
+          <Text style={styles.dayTitle}>{activeDay ? `Today · ${getDaySlotLabel(activeProgram.schedule.mode, activeDayIndex)}${activeDay.name ? ` · ${activeDay.name}` : ""}` : `Starts ${activeProgram.schedule.startDate}`}</Text>
+          <Text style={styles.body}>{activeDay?.kind === "training" ? `${activeDay.exercises.length} exercises · ${activeDay.exercises.reduce((sum, entry) => sum + entry.sets, 0)} planned sets. Session fills in today's workout for you.` : activeDay?.kind === "rest" ? "Scheduled recovery. Your streak is protected today, and you can still log an extra workout." : "Until the start date, Session uses normal tracking."} Your workout reminders follow this schedule when enabled.</Text>
+          <Action label="Open today's session" icon="arrow-forward" primary onPress={() => router.push("/workouts")} disabled={isSaving || Boolean(starting)} />
+          <Action label="Deactivate program" accessibilityLabel={`Deactivate ${activeProgram.name}`} icon="power-outline" onPress={() => setFollowConfirm(activeProgram.id)} disabled={isSaving || Boolean(starting)} />
+          {followConfirm === activeProgram.id ? <View style={styles.confirm}>
+            <Text style={styles.confirmTitle}>Deactivate {activeProgram.name}?</Text>
+            <Text style={styles.body}>New sessions use normal tracking and enabled reminders return to your regular workout timing. Automatic rest protection stops from today. Your current workout, completed sessions, and earlier rest days stay saved.</Text>
+            <Action label="Confirm deactivation" icon="checkmark" primary disabled={isSaving} onPress={() => followProgram(null)} />
+            <Action label="Keep active" icon="close" disabled={isSaving} onPress={() => setFollowConfirm(null)} />
+          </View> : null}
+        </> : <Text style={styles.body}>Start a session and choose your own exercises, or activate a saved program below to fill each day's workout automatically. Manual rest days and regular workout reminders still work.</Text>}
+      </View> : null}
       <Action label="Create program" icon="add" primary onPress={() => openEditor()} disabled={isLoading || isSaving || Boolean(starting)} />
       <View style={{ marginTop: 14 }}><Action label="Import program" icon="download-outline" onPress={() => { setImporting(true); setError(null); setNotice(null); }} disabled={isLoading || isSaving || Boolean(starting)} /></View>
       {notice ? <Text accessibilityLiveRegion="polite" style={styles.feedback}>{notice}</Text> : null}
-      {error ? <View style={styles.feedbackPanel}><Text accessibilityRole="alert" style={styles.error}>{error}</Text><Action label="Retry loading" icon="refresh" onPress={() => setReloadKey((value) => value + 1)} /></View> : null}
-      <StarterProgramLibrary onUse={useStarter} disabled={isLoading || isSaving || Boolean(starting)} />
-      {isLoading ? <Text style={styles.feedback}>Loading your programs…</Text> : !programs.length && !error ? <Text style={styles.feedback}>No saved programs yet. Start with a preset above, import a plan, or create your own.</Text> : null}
+      {error || libraryError ? <View style={styles.feedbackPanel}><Text accessibilityRole="alert" style={styles.error}>{error ?? libraryError}</Text><Action label="Retry loading" icon="refresh" onPress={() => setReloadKey((value) => value + 1)} /></View> : null}
+      {isLoading ? <Text style={styles.feedback}>Loading your programs…</Text> : !programs.length && !error && !libraryError ? <Text style={styles.feedback}>No saved programs yet. Choose a starter below, import a plan, or create your own.</Text> : null}
       {programs.length ? <Text accessibilityRole="header" style={[styles.sectionTitle, { marginTop: 30 }]}>Your programs</Text> : null}
       <View style={styles.programList}>
-        {programs.map((program) => {
-          const todayIndex = getScheduledDayIndex(program.schedule, program.days.length);
+        {displayedPrograms.map((program) => {
+          const todayIndex = getScheduledDayIndex(program.schedule, program.days.length, scheduleDate);
           const index = Math.min(previewDays[program.id] ?? Math.max(0, todayIndex), program.days.length - 1);
           const day = program.days[index];
           const isActive = activeProgramId === program.id;
@@ -243,14 +279,14 @@ export default function ProgramsScreen() {
           <View style={styles.programCard} key={program.id}>
             <Text style={styles.programName}>{program.name}</Text>
             <Text style={styles.caption}>{program.schedule.mode === "weekly" ? "Weekly" : `Every ${program.days.length} ${program.days.length === 1 ? "day" : "days"}`} · {program.days.filter((item) => item.kind === "training").length} training · {program.days.filter((item) => item.kind === "rest").length} rest</Text>
-            <Text style={isActive ? styles.notice : styles.caption}>{isActive ? "Program ON" : "Program OFF"} · Starts {program.schedule.startDate}</Text>
-            <Text style={styles.caption}>{isActive ? "Start Session loads today’s exercises. Planned rest days protect your streak automatically." : "Turn on to load today’s workout and protect scheduled rest days. Only one program can be on."}</Text>
-            <Action label={isActive ? "Turn program off" : "Turn program on"} accessibilityLabel={`${isActive ? "Turn off" : "Turn on"} ${program.name}`} icon="power-outline"
-              disabled={isSaving || Boolean(starting)} onPress={() => setFollowConfirm(program.id)} />
-            {followConfirm === program.id ? <View style={styles.confirm}>
-              <Text style={styles.confirmTitle}>{isActive ? "Turn this program off?" : "Turn this program on?"}</Text>
-              <Text style={styles.body}>{isActive ? "Automatic workouts and rest protection stop from today. Your current workout and earlier history stay unchanged." : `${activeProgramId ? "This turns your other program off. " : ""}Start Session will load the exercises for the current weekday or cycle day. Planned rest days count automatically from today or the start date, whichever is later. Missed training days still break the streak. Any workout already in progress stays unchanged.`}</Text>
-              <Action label={isActive ? "Confirm turn off" : "Confirm turn on"} icon="checkmark" primary disabled={isSaving} onPress={() => followProgram(isActive ? null : program.id)} />
+            <Text style={isActive ? styles.notice : styles.caption}>{isActive ? "Active program" : "Inactive"} · Starts {program.schedule.startDate}</Text>
+            <Text style={styles.caption}>{isActive ? "Session follows this schedule automatically. Use Deactivate program above to return to normal tracking." : "Activate to fill each day's session and protect scheduled rest days. Only one program is active at a time."}</Text>
+            {!isActive ? <Action label={activeProgram ? "Switch to this program" : "Activate program"} accessibilityLabel={`Activate ${program.name}`} icon="checkmark-circle-outline" primary
+              disabled={isLoading || isSaving || Boolean(starting)} onPress={() => { setFollowConfirm(program.id); setNotice(null); }} /> : null}
+            {followConfirm === program.id && !isActive ? <View style={styles.confirm}>
+              <Text style={styles.confirmTitle}>{activeProgram ? `Switch to ${program.name}?` : `Activate ${program.name}?`}</Text>
+              <Text style={styles.body}>{`${activeProgram ? `This replaces ${activeProgram.name} as your active program. ` : ""}Session fills the current weekday or cycle day's exercises. Planned rest days protect your streak from today or the start date, whichever is later. Enabled reminders follow the same schedule. Missed training days still break the streak. Any workout already in progress stays unchanged.`}</Text>
+              <Action label={activeProgram ? "Confirm switch" : "Confirm activation"} icon="checkmark" primary disabled={isSaving} onPress={() => followProgram(program.id)} />
               <Action label="Cancel" icon="close" disabled={isSaving} onPress={() => setFollowConfirm(null)} />
             </View> : null}
             <ProgramDayPicker program={program} selectedIndex={index} onSelect={(value) => setPreviewDays((current) => ({ ...current, [program.id]: value }))} disabled={isSaving || Boolean(starting)} />
@@ -264,7 +300,8 @@ export default function ProgramsScreen() {
             </View>
             <Action label={starting === program.id ? "Opening workout…" : "Start this day"} accessibilityLabel={`Start ${getProgramDayName(program, day)} in ${program.name}`} icon="play" primary
               disabled={isSaving || Boolean(starting)} onPress={() => startProgram(program, day)} />
-            </> : <Text style={styles.body}>{isActive ? "Planned recovery. Your streak is protected on this day while the schedule is active." : "Planned recovery. Turn this program on for automatic rest protection."}</Text>}
+            </> : <Text style={styles.body}>{isActive ? "Planned recovery. Your streak is protected on this day while the schedule is active." : "Planned recovery. Activate this program for automatic rest protection."}</Text>}
+            {day.kind === "training" ? <Text style={styles.caption}>{isActive ? "Start this day opens a single workout from the preview. Your active schedule stays selected." : "Start this day opens a single workout. To follow the schedule automatically, activate the program."}</Text> : null}
             {blockedProgram === program.id ? <View style={styles.feedbackPanel}><Text style={styles.body}>You already have an active workout. Finish it before starting a program.</Text>
               <Action label="Go to active session" icon="arrow-forward" onPress={() => router.push("/workouts")} /></View> : null}
             <View style={styles.cardActions}>
@@ -278,6 +315,7 @@ export default function ProgramsScreen() {
           </View>
         ); })}
       </View>
+      <StarterProgramLibrary onUse={useStarter} disabled={isLoading || isSaving || Boolean(starting)} />
       <Text style={styles.footer}>Programs stay on this device and work without an account.</Text>
     </ScrollView>
   );
@@ -325,6 +363,8 @@ const themedStyles = createThemedStyles((colors, ui) => ({
   reorderHint: { color: colors.mutedText, fontSize: 12, lineHeight: 19, marginBottom: 20 },
   editorActions: { gap: 20 }, pickerHeader: { gap: 22 },
   programList: { gap: 16, marginTop: 24 }, programCard: { ...ui.group, padding: 18, gap: 14 },
+  activePanel: { ...ui.group, padding: 18, gap: 14, marginBottom: 24 },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 8 }, activeLabel: { color: colors.accent, fontSize: 13, fontWeight: "600" },
   programName: { color: colors.text, fontSize: 23, lineHeight: 30, fontWeight: "700", letterSpacing: -0.5 },
   dayTitle: { color: colors.text, fontSize: 16, lineHeight: 23, fontWeight: "600", marginTop: 6 },
   preview: { marginVertical: 6 }, previewRow: { flexDirection: "row", gap: 10, alignItems: "center", paddingVertical: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },

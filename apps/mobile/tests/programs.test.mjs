@@ -563,6 +563,34 @@ for (const platform of ["web", "ios"]) {
     assert.equal((await workouts.createWorkoutSession({ followActiveProgram: true })).programPlan, null, "the next session is unplanned when the program is off");
   });
 
+  test(`${platform}: manual tracking bypasses an active program for one session and preserves unfinished snapshots`, async (t) => {
+    setup(t, platform);
+    t.mock.timers.enable({ apis: ["Date"], now: new Date(2026, 8, 1, 12).getTime() });
+    const saved = await programs.saveTrainingProgram(scheduled("cycle", "2026-09-01", ["training", "rest"]));
+    await programs.setActiveTrainingProgram(saved.id);
+    const history = await programs.getProgramScheduleHistory();
+
+    const manual = await workouts.createWorkoutSession();
+    assert.equal(manual.programPlan, null, "the user can choose their own exercises without turning the program off");
+    assert.deepEqual(manual.exercises, []);
+    assert.equal((await programs.getProgramLibrary()).activeProgramId, saved.id);
+    assert.deepEqual(await programs.getProgramScheduleHistory(), history, "one unplanned session does not change scheduled rest");
+    assert.equal((await streaks.getStreakSummary()).currentStreak, 0, "starting manually never credits a workout");
+    assert.equal((await workouts.createWorkoutSession({ followActiveProgram: true })).id, manual.id, "automatic starts resume unfinished manual work");
+    await workouts.addExerciseToWorkoutSession({ sessionId: manual.id, exercise: { id: "row", name: "Row", image: 2 }, sets: 2, reps: 10, weight: 75 });
+    await workouts.completeWorkoutSession(manual.id);
+    assert.equal((await streaks.getStreakSummary()).currentActiveDays, 1, "actual manual work counts normally");
+
+    const planned = await workouts.createWorkoutSession({ followActiveProgram: true });
+    assert.deepEqual(planned.programPlan.exercises, saved.days[0].exercises, "the next workout still follows the selected program");
+    const edited = { ...saved, days: saved.days.map((day, index) => index === 0 ? { ...day, exercises: [entry("replacement", "row", 4, 12)] } : day) };
+    await programs.saveTrainingProgram(edited);
+    const resumed = await workouts.createWorkoutSession();
+    assert.equal(resumed.id, planned.id, "manual starts cannot replace an unfinished planned workout");
+    assert.deepEqual(resumed.programPlan, planned.programPlan, "template edits cannot rewrite its existing targets");
+    assert.equal((await programs.getProgramLibrary()).activeProgramId, saved.id);
+  });
+
   test(`${platform}: automatic starts honor future dates, program switches, and the actual weekday`, async (t) => {
     setup(t, platform);
     t.mock.timers.enable({ apis: ["Date"], now: new Date(2026, 8, 2, 12).getTime() });

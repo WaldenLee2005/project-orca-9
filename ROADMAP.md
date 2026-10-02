@@ -122,7 +122,19 @@ Deliverables:
 - Attach workouts to program days.
 - Mark planned rest days.
 
-Status: Planned.
+Status: In progress; local programs and schedule integration implemented.
+
+Current progress:
+
+- Editable starter/imported/user programs with weekly or repeating-cycle training/rest schedules and typed targets.
+- Explicit activation/switch/deactivation, a prominent current-program/day summary, and automatic Session exercise queues.
+- Manual one-workout bypass and deactivation preserve unfinished sessions and previous history.
+- Shared schedule revisions keep enabled reminders and rest-aware streaks aligned; lifecycle regressions cover both storage backends.
+
+Remaining:
+
+- Program adherence-history calendar.
+- Physical-device reminder delivery checks remain under Phase 6.
 
 ## Phase 6: Rest-Day-Aware Streaks
 
