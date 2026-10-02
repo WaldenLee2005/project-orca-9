@@ -19,7 +19,7 @@ Recommended baseline:
 - `createThemedStyles` builds both style sheets once; components select them with `useThemeStyles`. Shared `ui.group`, `ui.control`, `ui.input`, and `ui.primary` surfaces have no decorative shadows or glow. Explicit selected and keyboard-focus states remain visible.
 - Root safe areas and bounded content widths support phone and tablet/web layouts. The edge-to-edge bottom bar occupies layout space, includes the bottom safe-area inset, and hides for the keyboard; screen content needs no floating-bar spacer.
 - `ScreenHeading` unifies screen hierarchy; `StreakCard` presents actual local activity for the current week, including rest days. No activity is fabricated for decoration.
-- Programs shows opt-in starter templates and user-saved programs, with themed schedule, target, import, and coaching editors. Browsing starters never writes to the user's library.
+- Programs shows compact saved/starter cards opening a read-only overview of every day, with Activate and Edit actions. Themed schedule, target, import and coaching editors open explicitly. Starter activation saves a fresh copy after confirmation; browsing never writes to the library.
 - Palette tests enforce at least 4.5:1 contrast for normal text and selected controls in both appearances, including grouped surfaces and input fields. This visual update does not modify data schemas, auth behavior, or coaching rules.
 
 ## App Shape
@@ -97,6 +97,7 @@ Current Session flow:
 - `Add Exercise` appears after already logged exercises and opens the exercise picker.
 - Saving an exercise appends it to the active session log in chronological order.
 - Save Session marks the workout session completed after at least one exercise has been logged.
+- Exit session cancels only empty unfinished sessions; sessions with logged results pause and resume from Today. A shared workout mutation queue and conditional storage deletion protect results during concurrent saves. No schema or training-history reset is involved.
 - The start screen shows recent completed sessions below Start Session with exercise count, set count, and total volume.
 - Logged rows show exercise name, save time, sets, reps, and weight.
 - Saved rows support swipe-to-delete.
@@ -107,7 +108,7 @@ Current Session flow:
 
 Owns locally saved, user-created multi-day programs with weekly/cycle schedules.
 
-- `starterPrograms.ts` defines three offline, moderate-volume templates using stable RepDB IDs. Its pure factory resolves current catalog names and generates fresh day/exercise IDs and nested targets for each unsaved copy. `StarterProgramLibrary` previews all training/rest days; Use opens the ordinary builder, Save persists a copy OFF, and the existing explicit activation path controls automatic queue/rest behavior. No storage migration, auto-seeding, or load guesses are involved. FBEOD is a rolling 4-day cycle, not a weekly reset. Regression tests cover real catalog membership, direct-muscle frequency/volume, cloning, rest protection, and missed-training-day streak breaks in both storage implementations.
+- `starterPrograms.ts` defines three offline, moderate-volume templates using stable RepDB IDs. Its pure factory resolves current catalog names and generates fresh day/exercise IDs and nested targets for each copy. Starter cards open the shared read-only overview; Activate saves and activates a copy after confirmation, while Edit opens the ordinary builder and Save persists a new copy inactive. No migration, auto-seeding or load guesses are involved. FBEOD is a rolling 4-day cycle, not a weekly reset. Regression tests cover real catalog membership, direct-muscle frequency/volume, cloning, rest protection and missed-training-day streak breaks in both storage implementations.
 
 - `programModel.ts` defines ordered, uniquely identified exercises with set counts and discriminated per-set targets: exact reps, rep ranges, or integer-second durations. Shared validation/formatting, immutable reorder helpers, and workout snapshots preserve the distinction between prescriptions and actual results. Storage readers upgrade exact-rep fields in the current scheduled format only.
 - `ProgramsScreen` supports create/edit/delete confirmation and multi-add search through the existing RepDB library. `ProgramExerciseList` uses measured rows, drag handles, edge auto-scroll, and accessible move buttons; duplicate lifts remain separate entries.

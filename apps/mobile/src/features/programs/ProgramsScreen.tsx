@@ -2,12 +2,12 @@ import { useThemeStyles } from "../../theme/ThemeProvider";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { AppState, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { AppState, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { ScreenHeading } from "../../components/ScreenHeading";
 import { ExerciseBrowser } from "../exercises/ExerciseBrowser";
 import { ProgramExerciseList, type ProgramScrollMetrics } from "./ProgramExerciseList";
-import { formatProgramPrescription, getDaySlotLabel, getProgramDayName, getScheduledDayIndex, localDateKey, PROGRAM_LIMITS, type ProgramDay, type ProgramDraft, type TrainingProgram, type ProgramExercise } from "./programModel";
-import { emptyProgramDay, ProgramDayPicker, ProgramScheduleEditor } from "./ProgramScheduleEditor";
+import { getDaySlotLabel, getProgramDayName, getScheduledDayIndex, localDateKey, PROGRAM_LIMITS, type ProgramDay, type ProgramDraft, type TrainingProgram, type ProgramExercise } from "./programModel";
+import { emptyProgramDay, ProgramScheduleEditor } from "./ProgramScheduleEditor";
 import { sessionExercises, type CatalogExercise } from "../workouts/repdbSessionExercises";
 import { createLocalId } from "../../storage/database";
 import { deleteTrainingProgram, getProgramLibrary, saveTrainingProgram, setActiveTrainingProgram } from "../../storage/programsRepository";
@@ -16,6 +16,7 @@ import { subscribeToTrainingChanges } from "../../storage/trainingChanges";
 import { createThemedStyles } from "../../theme/designSystem";
 import { ProgramImportScreen } from "./ProgramImportScreen";
 import { StarterProgramLibrary } from "./StarterProgramLibrary";
+import { ProgramDaysOverview } from "./ProgramOverview";
 import { createStarterProgram, STARTER_GUIDANCE, type StarterProgram } from "./starterPrograms";
 
 export default function ProgramsScreen() {
@@ -28,7 +29,8 @@ export default function ProgramsScreen() {
   const [starterName, setStarterName] = useState<string | null>(null);
   const [importScheduleConfirmed, setImportScheduleConfirmed] = useState(false);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-  const [previewDays, setPreviewDays] = useState<Record<string, number>>({});
+  const [previewProgramId, setPreviewProgramId] = useState<string | null>(null);
+  const [previewStarter, setPreviewStarter] = useState<StarterProgram | null>(null);
   const [activeProgramId, setActiveProgramId] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState(localDateKey());
   const [followConfirm, setFollowConfirm] = useState<string | null>(null);
@@ -77,6 +79,13 @@ export default function ProgramsScreen() {
   const activeDayIndex = activeProgram ? getScheduledDayIndex(activeProgram.schedule, activeProgram.days.length, scheduleDate) : -1;
   const activeDay = activeProgram?.days[activeDayIndex];
   const displayedPrograms = [...programs].sort((a, b) => Number(b.id === activeProgramId) - Number(a.id === activeProgramId));
+  const savedPreview = programs.find((program) => program.id === previewProgramId);
+  const starterPreview = useMemo(() => {
+    if (!previewStarter) return null;
+    let id = 0;
+    return createStarterProgram(previewStarter.id, scheduleDate, sessionExercises, (prefix) => `preview-${prefix}-${++id}`);
+  }, [previewStarter, scheduleDate]);
+  const overview = savedPreview ?? starterPreview;
 
   const selectedDay = draft?.days[selectedDayIndex];
   const addedCounts = useMemo(() => {
@@ -90,6 +99,7 @@ export default function ProgramsScreen() {
   }
 
   function openEditor(program?: TrainingProgram) {
+    if (!program) { setPreviewProgramId(null); setPreviewStarter(null); }
     setImported(false); setImportScheduleConfirmed(false); setStarterName(null);
     const next: ProgramDraft = program
       ? { id: program.id, name: program.name, schedule: { ...program.schedule }, days: program.days.map((day) => ({ ...day, exercises: day.exercises.map((entry) => ({ ...entry, target: { ...entry.target } })) })) }
@@ -116,6 +126,11 @@ export default function ProgramsScreen() {
     setDraft(null); setError(null);
   }
 
+  function closeOverview() {
+    if (busy.current) return;
+    setPreviewProgramId(null); setPreviewStarter(null); setFollowConfirm(null); setDeleting(null); setBlockedProgram(null); setError(null); setNotice(null);
+  }
+
   function addExercise(exercise: CatalogExercise) {
     if (!draft || !selectedDay || selectedDay.kind !== "training") return;
     if (selectedDay.exercises.length >= PROGRAM_LIMITS.exercises) {
@@ -134,7 +149,7 @@ export default function ProgramsScreen() {
     try {
       const program = await saveTrainingProgram(draft);
       setPrograms((current) => [program, ...current.filter((item) => item.id !== program.id)]);
-      setDraft(null); setNotice(`${program.name} saved on this device.${activeProgramId === program.id ? " Active schedule updated from today; earlier streak history is unchanged." : " Activate it to automatically load today's exercises and protect rest days."}`); setDiscarding(false);
+      setDraft(null); setPreviewProgramId(program.id); setPreviewStarter(null); setNotice("Program saved."); setDiscarding(false);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save your program. Your changes are still here."); }
     finally { busy.current = false; setIsSaving(false); setIsLoading(false); }
   }
@@ -146,6 +161,7 @@ export default function ProgramsScreen() {
       await deleteTrainingProgram(program.id);
       if (activeProgramId === program.id) setActiveProgramId(null);
       setPrograms((current) => current.filter((item) => item.id !== program.id));
+      setPreviewProgramId(null);
       setDeleting(null); setNotice(`${program.name} deleted. Workout history is unchanged.`);
     } catch { setError("Could not delete that program. Please try again."); }
     finally { busy.current = false; setIsSaving(false); setIsLoading(false); }
@@ -158,8 +174,23 @@ export default function ProgramsScreen() {
       await setActiveTrainingProgram(id);
       setActiveProgramId(id); setFollowConfirm(null);
       const name = programs.find((program) => program.id === id)?.name;
-      setNotice(id ? `${name ?? "Program"} is now active. Scheduled training days fill automatically in Session. Enabled reminders follow the schedule, and planned rest days protect your streak.` : "Program deactivated. New sessions use normal tracking. Enabled reminders return to your regular workout timing; earlier rest days and existing workouts are preserved.");
+      setNotice(id ? `${name ?? "Program"} is now active.` : "Program deactivated.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not change the active schedule."); }
+    finally { busy.current = false; setIsSaving(false); setIsLoading(false); }
+  }
+
+  async function activateStarter(starter: StarterProgram) {
+    if (busy.current) return;
+    busy.current = true; ++loadVersion.current; setIsSaving(true); setError(null);
+    try {
+      const next = createStarterProgram(starter.id, localDateKey(), sessionExercises, createLocalId);
+      const program = await saveTrainingProgram(next);
+      // Keep the saved copy reviewable even if the separate activation write fails.
+      setPrograms((current) => [program, ...current.filter((item) => item.id !== program.id)]);
+      setPreviewProgramId(program.id); setPreviewStarter(null); setFollowConfirm(null);
+      await setActiveTrainingProgram(program.id);
+      setActiveProgramId(program.id); setNotice(`${program.name} is now active.`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not activate this program. Please try again."); }
     finally { busy.current = false; setIsSaving(false); setIsLoading(false); }
   }
 
@@ -199,7 +230,7 @@ export default function ProgramsScreen() {
         onContentSizeChange={(_width, height) => { scrollMetrics.current.contentHeight = height; }}
         onLayout={({ nativeEvent }) => { scrollMetrics.current.height = nativeEvent.layout.height; }}>
         <Pressable accessibilityRole="button" disabled={isSaving || isDragging} onPress={closeEditor} style={styles.back}>
-          <Ionicons name="chevron-back" size={20} color={colors.text} /><Text style={styles.backText}>Programs</Text>
+          <Ionicons name="chevron-back" size={20} color={colors.text} /><Text style={styles.backText}>{overview ? "Overview" : "Programs"}</Text>
         </Pressable>
         <ScreenHeading eyebrow="Orca · Program builder" title={draft.id ? "Edit program" : "New program"} subtitle="Choose a schedule, rest days, and exercise targets." />
         {starterName ? <View style={styles.starterNote}>
@@ -243,6 +274,53 @@ export default function ProgramsScreen() {
     );
   }
 
+  if (overview) {
+    const isActive = savedPreview?.id === activeProgramId;
+    const overviewId = savedPreview?.id ?? previewStarter!.id;
+    const disabled = isLoading || isSaving || Boolean(starting);
+    const todayIndex = getScheduledDayIndex(overview.schedule, overview.days.length, scheduleDate);
+    return <ScrollView key={`overview-${overviewId}`} style={styles.screen} contentContainerStyle={ui.content}>
+      <Pressable accessibilityRole="button" disabled={isSaving || Boolean(starting)} onPress={closeOverview} style={styles.back}>
+        <Ionicons name="chevron-back" size={20} color={colors.text} /><Text style={styles.backText}>Programs</Text>
+      </Pressable>
+      <ScreenHeading eyebrow={previewStarter ? "Orca · Starter program" : "Orca · Your program"} title={overview.name} subtitle={scheduleSummary(overview)} />
+      <Text style={styles.overviewDate}>Starts {overview.schedule.startDate}</Text>
+      <View style={styles.overviewActions}>
+        <Action label={isSaving ? "Please wait…" : isActive ? "Active program" : "Activate program"} icon={isActive ? "checkmark-circle" : "play"} primary
+          accessibilityLabel={isActive ? `${overview.name} is active` : `Activate ${overview.name}`} disabled={disabled || isActive}
+          onPress={() => { setFollowConfirm(overviewId); setError(null); setNotice(null); }} />
+        <Action label="Edit program" accessibilityLabel={`Edit program ${overview.name}`} icon="create-outline" disabled={disabled}
+          onPress={() => savedPreview ? openEditor(savedPreview) : useStarter(previewStarter!)} />
+      </View>
+      {followConfirm === overviewId && !isActive ? <View accessibilityLiveRegion="polite" style={styles.confirm}>
+        <Text style={styles.confirmTitle}>{activeProgram ? `Switch to ${overview.name}?` : `Activate ${overview.name}?`}</Text>
+        <Text style={styles.body}>{previewStarter ? "Saves your own copy starting today. " : ""}{activeProgram ? `Replaces ${activeProgram.name}. ` : ""}Session follows this schedule and rest days protect your streak. Your current workout stays unchanged.</Text>
+        <Action label={activeProgram ? "Confirm switch" : "Confirm activation"} icon="checkmark" primary disabled={isSaving}
+          onPress={() => savedPreview ? followProgram(savedPreview.id) : activateStarter(previewStarter!)} />
+        <Action label="Cancel" icon="close" disabled={isSaving} onPress={() => setFollowConfirm(null)} />
+      </View> : null}
+      {notice ? <Text accessibilityLiveRegion="polite" style={styles.feedback}>{notice}</Text> : null}
+      {error || libraryError ? <View style={styles.feedbackPanel}><Text accessibilityRole="alert" style={styles.error}>{error ?? libraryError}</Text>
+        {libraryError ? <Action label="Retry loading" icon="refresh" onPress={() => setReloadKey((value) => value + 1)} /> : null}</View> : null}
+      {blockedProgram === overviewId ? <View style={styles.feedbackPanel}><Text style={styles.body}>Finish your unfinished workout before starting another day. If no exercises are saved, you can exit it instead.</Text>
+        <Action label="Go to active session" icon="arrow-forward" onPress={() => router.push("/workouts")} /></View> : null}
+      <ProgramDaysOverview program={overview} todayIndex={todayIndex} disabled={disabled}
+        onStartDay={savedPreview ? (day) => { void startProgram(savedPreview, day); } : undefined} />
+      {savedPreview ? <View style={styles.managementActions}>
+        {isActive ? <Action label="Deactivate program" icon="power-outline" disabled={disabled} onPress={() => { setFollowConfirm(overviewId); setNotice(null); }} /> : null}
+        {followConfirm === overviewId && isActive ? <View accessibilityLiveRegion="polite" style={styles.confirm}>
+          <Text style={styles.confirmTitle}>Deactivate {overview.name}?</Text>
+          <Text style={styles.body}>Future sessions use manual tracking. Your current workout and earlier workout/rest history stay saved.</Text>
+          <Action label="Confirm deactivation" icon="checkmark" primary disabled={isSaving} onPress={() => followProgram(null)} />
+          <Action label="Keep active" icon="close" disabled={isSaving} onPress={() => setFollowConfirm(null)} />
+        </View> : null}
+        <Action label="Delete program" icon="trash-outline" disabled={disabled} onPress={() => setDeleting(overviewId)} />
+        {deleting === overviewId ? <Confirm title={`Delete ${overview.name}?`} description="Removes this program and stops it if active. Your workout and earlier history stay saved. This can’t be undone."
+          confirmLabel="Delete program" disabled={isSaving} onConfirm={() => removeProgram(savedPreview)} onCancel={() => setDeleting(null)} /> : null}
+      </View> : <Text style={styles.footer}>Nothing is saved until you activate or save an edited copy.</Text>}
+    </ScrollView>;
+  }
+
   return (
     <ScrollView key="program-list" style={styles.screen} contentContainerStyle={ui.content}>
       <ScreenHeading eyebrow="Orca · Your training" title="Programs" subtitle="Your schedule, exercises, and rest days." />
@@ -252,16 +330,10 @@ export default function ProgramsScreen() {
         <Text style={styles.programName}>{activeProgram?.name ?? "Track your way"}</Text>
         {activeProgram ? <>
           <Text style={styles.dayTitle}>{activeDay ? `Today · ${getDaySlotLabel(activeProgram.schedule.mode, activeDayIndex)}${activeDay.name ? ` · ${activeDay.name}` : ""}` : `Starts ${activeProgram.schedule.startDate}`}</Text>
-          <Text style={styles.body}>{activeDay?.kind === "training" ? `${activeDay.exercises.length} exercises · ${activeDay.exercises.reduce((sum, entry) => sum + entry.sets, 0)} planned sets. Session fills in today's workout for you.` : activeDay?.kind === "rest" ? "Scheduled recovery. Your streak is protected today, and you can still log an extra workout." : "Until the start date, Session uses normal tracking."} Your workout reminders follow this schedule when enabled.</Text>
+          <Text style={styles.body}>{activeDay?.kind === "training" ? `${activeDay.exercises.length} exercises · ${activeDay.exercises.reduce((sum, entry) => sum + entry.sets, 0)} sets` : activeDay?.kind === "rest" ? "Rest day · Your streak is protected" : "Manual tracking until the start date"}</Text>
           <Action label="Open today's session" icon="arrow-forward" primary onPress={() => router.push("/workouts")} disabled={isSaving || Boolean(starting)} />
-          <Action label="Deactivate program" accessibilityLabel={`Deactivate ${activeProgram.name}`} icon="power-outline" onPress={() => setFollowConfirm(activeProgram.id)} disabled={isSaving || Boolean(starting)} />
-          {followConfirm === activeProgram.id ? <View style={styles.confirm}>
-            <Text style={styles.confirmTitle}>Deactivate {activeProgram.name}?</Text>
-            <Text style={styles.body}>New sessions use normal tracking and enabled reminders return to your regular workout timing. Automatic rest protection stops from today. Your current workout, completed sessions, and earlier rest days stay saved.</Text>
-            <Action label="Confirm deactivation" icon="checkmark" primary disabled={isSaving} onPress={() => followProgram(null)} />
-            <Action label="Keep active" icon="close" disabled={isSaving} onPress={() => setFollowConfirm(null)} />
-          </View> : null}
-        </> : <Text style={styles.body}>Start a session and choose your own exercises, or activate a saved program below to fill each day's workout automatically. Manual rest days and regular workout reminders still work.</Text>}
+          <Action label="View program" icon="list-outline" onPress={() => { setPreviewProgramId(activeProgram.id); setPreviewStarter(null); setError(null); setNotice(null); }} disabled={isSaving || Boolean(starting)} />
+        </> : <Text style={styles.body}>Choose a program to fill your workouts automatically, or track your own sessions.</Text>}
       </View> : null}
       <Action label="Create program" icon="add" primary onPress={() => openEditor()} disabled={isLoading || isSaving || Boolean(starting)} />
       <View style={{ marginTop: 14 }}><Action label="Import program" icon="download-outline" onPress={() => { setImporting(true); setError(null); setNotice(null); }} disabled={isLoading || isSaving || Boolean(starting)} /></View>
@@ -270,55 +342,26 @@ export default function ProgramsScreen() {
       {isLoading ? <Text style={styles.feedback}>Loading your programs…</Text> : !programs.length && !error && !libraryError ? <Text style={styles.feedback}>No saved programs yet. Choose a starter below, import a plan, or create your own.</Text> : null}
       {programs.length ? <Text accessibilityRole="header" style={[styles.sectionTitle, { marginTop: 30 }]}>Your programs</Text> : null}
       <View style={styles.programList}>
-        {displayedPrograms.map((program) => {
-          const todayIndex = getScheduledDayIndex(program.schedule, program.days.length, scheduleDate);
-          const index = Math.min(previewDays[program.id] ?? Math.max(0, todayIndex), program.days.length - 1);
-          const day = program.days[index];
-          const isActive = activeProgramId === program.id;
-          return (
-          <View style={styles.programCard} key={program.id}>
+        {displayedPrograms.map((program) => <Pressable key={program.id} accessibilityRole="button" accessibilityLabel={`View program ${program.name}`}
+          accessibilityState={{ disabled: isSaving || Boolean(starting) }} disabled={isSaving || Boolean(starting)}
+          onPress={() => { setPreviewProgramId(program.id); setPreviewStarter(null); setFollowConfirm(null); setDeleting(null); setBlockedProgram(null); setError(null); setNotice(null); }}
+          style={({ pressed }) => [styles.programCard, styles.programSummary, { opacity: pressed ? 0.75 : 1 }]}>
+          <View style={styles.programTitleBlock}>
             <Text style={styles.programName}>{program.name}</Text>
-            <Text style={styles.caption}>{program.schedule.mode === "weekly" ? "Weekly" : `Every ${program.days.length} ${program.days.length === 1 ? "day" : "days"}`} · {program.days.filter((item) => item.kind === "training").length} training · {program.days.filter((item) => item.kind === "rest").length} rest</Text>
-            <Text style={isActive ? styles.notice : styles.caption}>{isActive ? "Active program" : "Inactive"} · Starts {program.schedule.startDate}</Text>
-            <Text style={styles.caption}>{isActive ? "Session follows this schedule automatically. Use Deactivate program above to return to normal tracking." : "Activate to fill each day's session and protect scheduled rest days. Only one program is active at a time."}</Text>
-            {!isActive ? <Action label={activeProgram ? "Switch to this program" : "Activate program"} accessibilityLabel={`Activate ${program.name}`} icon="checkmark-circle-outline" primary
-              disabled={isLoading || isSaving || Boolean(starting)} onPress={() => { setFollowConfirm(program.id); setNotice(null); }} /> : null}
-            {followConfirm === program.id && !isActive ? <View style={styles.confirm}>
-              <Text style={styles.confirmTitle}>{activeProgram ? `Switch to ${program.name}?` : `Activate ${program.name}?`}</Text>
-              <Text style={styles.body}>{`${activeProgram ? `This replaces ${activeProgram.name} as your active program. ` : ""}Session fills the current weekday or cycle day's exercises. Planned rest days protect your streak from today or the start date, whichever is later. Enabled reminders follow the same schedule. Missed training days still break the streak. Any workout already in progress stays unchanged.`}</Text>
-              <Action label={activeProgram ? "Confirm switch" : "Confirm activation"} icon="checkmark" primary disabled={isSaving} onPress={() => followProgram(program.id)} />
-              <Action label="Cancel" icon="close" disabled={isSaving} onPress={() => setFollowConfirm(null)} />
-            </View> : null}
-            <ProgramDayPicker program={program} selectedIndex={index} onSelect={(value) => setPreviewDays((current) => ({ ...current, [program.id]: value }))} disabled={isSaving || Boolean(starting)} />
-            <Text style={styles.dayTitle}>{getProgramDayName(program, day)}{day.name ? ` · ${getDaySlotLabel(program.schedule.mode, index)}` : ""}{index === todayIndex ? " · Today" : ""}</Text>
-            {day.kind === "training" ? <>
-            <View style={styles.preview}>
-              {day.exercises.map((entry, order) => <View style={styles.previewRow} key={entry.id}>
-                <Text style={styles.previewOrder}>{order + 1}</Text><Text style={styles.previewName}>{entry.exerciseName}</Text>
-                <Text style={styles.previewGoal}>{formatProgramPrescription(entry)}</Text>
-              </View>)}
-            </View>
-            <Action label={starting === program.id ? "Opening workout…" : "Start this day"} accessibilityLabel={`Start ${getProgramDayName(program, day)} in ${program.name}`} icon="play" primary
-              disabled={isSaving || Boolean(starting)} onPress={() => startProgram(program, day)} />
-            </> : <Text style={styles.body}>{isActive ? "Planned recovery. Your streak is protected on this day while the schedule is active." : "Planned recovery. Activate this program for automatic rest protection."}</Text>}
-            {day.kind === "training" ? <Text style={styles.caption}>{isActive ? "Start this day opens a single workout from the preview. Your active schedule stays selected." : "Start this day opens a single workout. To follow the schedule automatically, activate the program."}</Text> : null}
-            {blockedProgram === program.id ? <View style={styles.feedbackPanel}><Text style={styles.body}>You already have an active workout. Finish it before starting a program.</Text>
-              <Action label="Go to active session" icon="arrow-forward" onPress={() => router.push("/workouts")} /></View> : null}
-            <View style={styles.cardActions}>
-              <Action label="Edit program" accessibilityLabel={`Edit program ${program.name}`} icon="create-outline" onPress={() => openEditor(program)} disabled={isSaving || Boolean(starting)} />
-              <Pressable accessibilityRole="button" accessibilityLabel={`Delete program ${program.name}`} onPress={() => setDeleting(program.id)} disabled={isSaving || Boolean(starting)} style={styles.deleteButton}>
-                <Ionicons name="trash-outline" size={20} color={colors.secondaryText} />
-              </Pressable>
-            </View>
-            {deleting === program.id ? <Confirm title={`Delete ${program.name}?`} description="This removes the program and stops it if active. Earlier rest days and workout history stay unchanged. This can’t be undone."
-              confirmLabel="Delete program" disabled={isSaving} onConfirm={() => removeProgram(program)} onCancel={() => setDeleting(null)} /> : null}
+            <Text style={styles.caption}>{scheduleSummary(program)}</Text>
+            {activeProgramId === program.id ? <Text style={styles.notice}>Active program</Text> : null}
           </View>
-        ); })}
+          <Ionicons name="chevron-forward" size={20} color={colors.accent} />
+        </Pressable>)}
       </View>
-      <StarterProgramLibrary onUse={useStarter} disabled={isLoading || isSaving || Boolean(starting)} />
+      <StarterProgramLibrary onPreview={(starter) => { setPreviewStarter(starter); setPreviewProgramId(null); setFollowConfirm(null); setError(null); setNotice(null); }} disabled={isLoading || isSaving || Boolean(starting)} />
       <Text style={styles.footer}>Programs stay on this device and work without an account.</Text>
     </ScrollView>
   );
+}
+
+function scheduleSummary(program: ProgramDraft) {
+  return `${program.schedule.mode === "weekly" ? "Weekly" : `${program.days.length}-day cycle`} · ${program.days.filter((day) => day.kind === "training").length} training · ${program.days.filter((day) => day.kind === "rest").length} rest`;
 }
 
 function Action({ label, accessibilityLabel, icon, onPress, primary, disabled }: {
@@ -363,15 +406,13 @@ const themedStyles = createThemedStyles((colors, ui) => ({
   reorderHint: { color: colors.mutedText, fontSize: 12, lineHeight: 19, marginBottom: 20 },
   editorActions: { gap: 20 }, pickerHeader: { gap: 22 },
   programList: { gap: 16, marginTop: 24 }, programCard: { ...ui.group, padding: 18, gap: 14 },
+  programSummary: { flexDirection: "row", alignItems: "center" }, programTitleBlock: { flex: 1, minWidth: 0, gap: 5 },
+  overviewDate: { color: colors.secondaryText, fontSize: 12, lineHeight: 18, marginTop: -16, marginBottom: 20 },
+  overviewActions: { gap: 12 }, managementActions: { gap: 12, marginTop: 30 },
   activePanel: { ...ui.group, padding: 18, gap: 14, marginBottom: 24 },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 8 }, activeLabel: { color: colors.accent, fontSize: 13, fontWeight: "600" },
   programName: { color: colors.text, fontSize: 23, lineHeight: 30, fontWeight: "700", letterSpacing: -0.5 },
   dayTitle: { color: colors.text, fontSize: 16, lineHeight: 23, fontWeight: "600", marginTop: 6 },
-  preview: { marginVertical: 6 }, previewRow: { flexDirection: "row", gap: 10, alignItems: "center", paddingVertical: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  previewOrder: { color: colors.accent, width: 17, fontSize: 12, fontWeight: "700" },
-  previewName: { flex: 1, minWidth: 0, color: colors.secondaryText, fontSize: 13, lineHeight: 19 }, previewGoal: { flexShrink: 1, maxWidth: "48%", textAlign: "right", color: colors.text, fontSize: 13, lineHeight: 19, fontWeight: "600" },
-  cardActions: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 14 },
-  deleteButton: { width: 48, height: 48, alignItems: "center", justifyContent: "center" },
   confirm: { ...ui.input, padding: 20, gap: 16, marginVertical: 16 }, confirmTitle: { color: colors.text, fontSize: 17, lineHeight: 24, fontWeight: "600" },
   confirmDelete: { backgroundColor: colors.danger, borderRadius: 16, minHeight: 48, alignItems: "center", justifyContent: "center", padding: 12 },
   confirmDeleteText: { color: colors.onAccent, fontSize: 14, fontWeight: "700" }

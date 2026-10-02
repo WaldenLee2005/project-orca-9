@@ -401,17 +401,20 @@ export async function getProgressVolumeSeries(input: { liftKey?: string | null; 
   }));
 }
 
-let creatingSession: Promise<ActiveWorkoutSession> | null = null;
+let workoutMutation: Promise<void> = Promise.resolve();
+
+function serializeWorkoutMutation<T>(action: () => Promise<T>): Promise<T> {
+  const operation = workoutMutation.then(action);
+  // Failed writes must not block a later retry. The caller still receives the original rejection.
+  workoutMutation = operation.then(() => undefined, () => undefined);
+  return operation;
+}
+
 type CreateSessionInput = { programPlan: WorkoutProgramPlan } | { followActiveProgram: true };
 
 export async function createWorkoutSession(input?: CreateSessionInput): Promise<ActiveWorkoutSession> {
-  // Serialize creation so a double tap or concurrent program launch cannot fork an active workout.
-  if (creatingSession) {
-    await creatingSession;
-  }
-  const operation = createStoredWorkoutSession(input);
-  creatingSession = operation;
-  try { return await operation; } finally { if (creatingSession === operation) creatingSession = null; }
+  // Serialize all workout mutations so cancellation cannot overwrite a concurrent save on web.
+  return serializeWorkoutMutation(() => createStoredWorkoutSession(input));
 }
 
 async function createStoredWorkoutSession(input?: CreateSessionInput): Promise<ActiveWorkoutSession> {
@@ -473,6 +476,10 @@ type AddExerciseInput = {
 };
 
 export async function addExerciseToWorkoutSession(input: AddExerciseInput) {
+  return serializeWorkoutMutation(() => addStoredExerciseToWorkoutSession(input));
+}
+
+async function addStoredExerciseToWorkoutSession(input: AddExerciseInput) {
   validateWorkoutMeasurement(input);
   const actualSets = getActualSets(input);
   validateActualSets(actualSets);
@@ -554,6 +561,10 @@ export async function addExerciseToWorkoutSession(input: AddExerciseInput) {
 }
 
 export async function deleteWorkoutExercise(workoutExerciseId: string) {
+  return serializeWorkoutMutation(() => deleteStoredWorkoutExercise(workoutExerciseId));
+}
+
+async function deleteStoredWorkoutExercise(workoutExerciseId: string) {
   if (Platform.OS === "web") {
     await deleteWebWorkoutExercise(workoutExerciseId);
     return;
@@ -565,6 +576,10 @@ export async function deleteWorkoutExercise(workoutExerciseId: string) {
 }
 
 export async function completeWorkoutSession(sessionId: string) {
+  return serializeWorkoutMutation(() => completeStoredWorkoutSession(sessionId));
+}
+
+async function completeStoredWorkoutSession(sessionId: string) {
   if (Platform.OS === "web") {
     return completeWebWorkoutSession(sessionId);
   }
@@ -584,8 +599,33 @@ export async function completeWorkoutSession(sessionId: string) {
   return { id: sessionId, completedAt: now };
 }
 
+export async function cancelEmptyWorkoutSession(sessionId: string): Promise<boolean> {
+  return serializeWorkoutMutation(async () => {
+    if (Platform.OS === "web") {
+      // Refuse malformed storage rather than dropping unrelated records during cancellation.
+      const sessions = await getWebWorkoutSessions(true);
+      const session = sessions.find((item) => item.id === sessionId);
+      if (!session || session.completedAt != null || session.exercises.length > 0) return false;
+      await saveWebWorkoutSessions(sessions.filter((item) => item.id !== sessionId));
+      return true;
+    }
 
-async function getWebWorkoutSessions() {
+    const database = await getDatabase();
+    // The guard is part of the delete, so an empty screen can never delete newly saved results.
+    const result = await database.runAsync(
+      `DELETE FROM workout_sessions
+       WHERE id = ? AND completed_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM workout_exercises
+           WHERE workout_session_id = workout_sessions.id
+         );`,
+      [sessionId]
+    );
+    return result.changes > 0;
+  });
+}
+
+async function getWebWorkoutSessions(requireValidStorage = false) {
   await ensureWebTrainingStorage();
   const storedSessions = await AsyncStorage.getItem(WEB_WORKOUT_SESSIONS_KEY);
 
@@ -595,8 +635,14 @@ async function getWebWorkoutSessions() {
 
   try {
     const parsed = JSON.parse(storedSessions);
+    if (requireValidStorage && (!Array.isArray(parsed) || !parsed.every(isWebWorkoutSession)
+      || !parsed.every((session) => session.completedAt === null || typeof session.completedAt === "string")
+      || new Set(parsed.map((session) => session.id)).size !== parsed.length)) {
+      throw new Error("Invalid saved workout data.");
+    }
     return Array.isArray(parsed) ? parsed.filter(isWebWorkoutSession) : [];
   } catch {
+    if (requireValidStorage) throw new Error("Could not safely read your saved workouts.");
     return [];
   }
 }

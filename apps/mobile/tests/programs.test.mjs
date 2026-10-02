@@ -59,6 +59,104 @@ function setup(t, platform) {
   t.after(() => state.sql.close());
 }
 
+for (const platform of ["web", "ios"]) {
+  test(`${platform}: exiting an empty planned session allows a fresh start without completing work or changing the program`, async (t) => {
+    setup(t, platform);
+    t.mock.timers.enable({ apis: ["Date"], now: new Date(2026, 8, 1, 12).getTime() });
+    const completed = await workouts.createWorkoutSession();
+    await workouts.addExerciseToWorkoutSession({ sessionId: completed.id, exercise: { id: "bench", name: "Bench Press", image: 1 }, sets: 2, reps: 8, weight: 50 });
+    await workouts.completeWorkoutSession(completed.id);
+    const saved = await programs.saveTrainingProgram(draft());
+    await programs.setActiveTrainingProgram(saved.id);
+    const empty = await workouts.createWorkoutSession({ followActiveProgram: true });
+    assert.ok(empty.programPlan.exercises.length > 0, "planned targets are not actual logged exercises");
+    assert.deepEqual(empty.exercises, []);
+    const before = { library: await programs.getProgramLibrary(), history: await programs.getProgramScheduleHistory(), workouts: await workouts.getCompletedWorkoutSessions(), streak: await streaks.getStreakSummary() };
+    assert.equal(await workouts.cancelEmptyWorkoutSession(empty.id), true);
+    assert.equal(await workouts.getActiveWorkoutSession(), null);
+    assert.deepEqual(await programs.getProgramLibrary(), before.library);
+    assert.deepEqual(await programs.getProgramScheduleHistory(), before.history);
+    assert.deepEqual(await workouts.getCompletedWorkoutSessions(), before.workouts);
+    assert.deepEqual(await streaks.getStreakSummary(), before.streak, "exit neither earns a workout nor marks rest");
+    const fresh = await workouts.createWorkoutSession({ followActiveProgram: true });
+    assert.notEqual(fresh.id, empty.id);
+    assert.deepEqual(fresh.programPlan, empty.programPlan);
+    assert.deepEqual(fresh.exercises, []);
+  });
+
+  test(`${platform}: cancellation refuses completed sessions and sessions with any saved results`, async (t) => {
+    setup(t, platform);
+    const active = await workouts.createWorkoutSession();
+    await workouts.addExerciseToWorkoutSession({ sessionId: active.id, exercise: { id: "row", name: "Row", image: 2 }, sets: 1, reps: 10, weight: 0 });
+    const before = await workouts.getActiveWorkoutSession();
+    assert.equal(await workouts.cancelEmptyWorkoutSession(active.id), false);
+    assert.deepEqual(await workouts.createWorkoutSession(), before, "saved work remains resumable even at zero load");
+    await workouts.completeWorkoutSession(active.id);
+    const history = await workouts.getCompletedWorkoutSessions();
+    assert.equal(await workouts.cancelEmptyWorkoutSession(active.id), false);
+    assert.deepEqual(await workouts.getCompletedWorkoutSessions(), history);
+    const completedEmpty = await workouts.createWorkoutSession();
+    await workouts.completeWorkoutSession(completedEmpty.id);
+    assert.equal(await workouts.cancelEmptyWorkoutSession(completedEmpty.id), false, "completion alone protects a record");
+    assert.equal(await workouts.cancelEmptyWorkoutSession("missing-session"), false);
+  });
+
+  test(`${platform}: a concurrent exercise save wins safely before empty-session cancellation`, async (t) => {
+    setup(t, platform);
+    const active = await workouts.createWorkoutSession();
+    const [exercise, cancelled] = await Promise.all([
+      workouts.addExerciseToWorkoutSession({ sessionId: active.id, exercise: { id: "bench", name: "Bench Press", image: 1 }, sets: 3, reps: 8, weight: 100 }),
+      workouts.cancelEmptyWorkoutSession(active.id)
+    ]);
+    assert.equal(cancelled, false);
+    const resumed = await workouts.getActiveWorkoutSession();
+    assert.equal(resumed.id, active.id);
+    assert.equal(resumed.exercises.length, 1);
+    assert.equal(resumed.exercises[0].id, exercise.id);
+    assert.equal(resumed.exercises[0].sets, 3);
+  });
+
+  test(`${platform}: cancellation prevents a later concurrent save from resurrecting a session`, async (t) => {
+    setup(t, platform);
+    const active = await workouts.createWorkoutSession();
+    const [cancelled, save] = await Promise.allSettled([
+      workouts.cancelEmptyWorkoutSession(active.id),
+      workouts.addExerciseToWorkoutSession({ sessionId: active.id, exercise: { id: "bench", name: "Bench Press", image: 1 }, sets: 1, reps: 8, weight: 100 })
+    ]);
+    assert.equal(cancelled.status, "fulfilled");
+    assert.equal(cancelled.value, true);
+    assert.equal(save.status, "rejected");
+    assert.match(save.reason.message, /no longer active/);
+    assert.equal(await workouts.getActiveWorkoutSession(), null);
+    assert.deepEqual(await workouts.getCompletedWorkoutSessions(), []);
+  });
+
+  test(`${platform}: failed empty-session cancellation preserves the session and can retry`, async (t) => {
+    setup(t, platform);
+    const active = await workouts.createWorkoutSession();
+    state.failWrite = true;
+    await assert.rejects(workouts.cancelEmptyWorkoutSession(active.id), /Disk full/);
+    assert.deepEqual(await workouts.getActiveWorkoutSession(), active);
+    state.failWrite = false;
+    assert.equal(await workouts.cancelEmptyWorkoutSession(active.id), true);
+    assert.equal(await workouts.getActiveWorkoutSession(), null);
+    assert.deepEqual(await workouts.getCompletedWorkoutSessions(), []);
+  });
+}
+
+test("web: empty-session cancellation refuses corrupt or ambiguous storage without overwriting it", async (t) => {
+  setup(t, "web");
+  const active = await workouts.createWorkoutSession();
+  const valid = JSON.parse(state.values.get("orca9.workoutSessions"));
+  for (const corrupt of ["{", JSON.stringify({ sessions: valid }), JSON.stringify([...valid, { invalid: true }]), JSON.stringify([...valid, ...valid])]) {
+    state.values.set("orca9.workoutSessions", corrupt);
+    await assert.rejects(workouts.cancelEmptyWorkoutSession(active.id), /safely read/);
+    assert.equal(state.values.get("orca9.workoutSessions"), corrupt);
+  }
+  state.values.set("orca9.workoutSessions", JSON.stringify(valid));
+  assert.equal(await workouts.cancelEmptyWorkoutSession(active.id), true);
+});
+
 for (const platform of ["web", "ios"]) for (const starter of STARTER_PROGRAMS) {
   test(`${platform}: ${starter.name} protects unlogged rest days but breaks the streak after an unlogged training day`, async (t) => {
     setup(t, platform);

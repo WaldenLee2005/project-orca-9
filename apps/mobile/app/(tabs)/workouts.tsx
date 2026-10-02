@@ -21,6 +21,7 @@ import {
 import { trackDevOperation } from "../../src/dev/devDiagnosticsStore";
 import {
   addExerciseToWorkoutSession,
+  cancelEmptyWorkoutSession,
   completeWorkoutSession,
   createWorkoutSession,
   deleteWorkoutExercise,
@@ -61,10 +62,12 @@ export default function WorkoutsScreen() {
   const handledProgramRequest = useRef<string | null>(null);
   const savingExercise = useRef(false);
   const startingSession = useRef(false);
+  const exitingSession = useRef(false);
   const trainingRefreshRequest = useRef(0);
   const isTrainingScreenFocused = useRef(false);
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [isSavingExercise, setIsSavingExercise] = useState(false);
+  const [isExitingSession, setIsExitingSession] = useState(false);
   const [programPlan, setProgramPlan] = useState<WorkoutProgramPlan | null>(null);
   const [selectedProgramEntryId, setSelectedProgramEntryId] = useState<string | null>(null);
   const [isSessionReady, setIsSessionReady] = useState(false);
@@ -243,6 +246,13 @@ export default function WorkoutsScreen() {
 
   async function startSession(followActiveProgram = true) {
     if (startingSession.current || !isSessionReady) return false;
+    // Resume saved work without creating another session or depending on a fresh storage write.
+    if (sessionStartedAt) {
+      setStorageError(null);
+      setSessionNotice(null);
+      setStep("active");
+      return true;
+    }
     startingSession.current = true;
     setIsStartingSession(true);
     setStorageError(null);
@@ -392,7 +402,7 @@ export default function WorkoutsScreen() {
   }
 
   async function saveSession() {
-    if (isSavingSession) {
+    if (isSavingSession || exitingSession.current) {
       return;
     }
 
@@ -452,6 +462,40 @@ export default function WorkoutsScreen() {
     }
   }
 
+  async function exitSession() {
+    if (isSavingSession || savingExercise.current || exitingSession.current) return;
+    if (loggedExercises.length > 0) {
+      setStorageError(null);
+      setSessionNotice("Session paused. Resume whenever you’re ready.");
+      setStep("start");
+      return;
+    }
+
+    exitingSession.current = true;
+    setIsExitingSession(true);
+    const operation = trackDevOperation("Exit empty workout session", "Cancelling only an unfinished session with no saved exercises.");
+    try {
+      const cancelled = sessionId ? await cancelEmptyWorkoutSession(sessionId) : true;
+      const activeSession = cancelled ? null : await getActiveWorkoutSession();
+      setSessionId(activeSession?.id ?? null);
+      setSessionStartedAt(activeSession?.startedAt ?? null);
+      setLoggedExercises(activeSession?.exercises ?? []);
+      setProgramPlan(activeSession?.programPlan ?? null);
+      setSelectedExercise(null);
+      setSelectedProgramEntryId(null);
+      setStorageError(null);
+      setSessionNotice(activeSession ? "Session paused. Resume whenever you’re ready." : "Session exited.");
+      setStep("start");
+      operation.resolve(activeSession ? "Saved workout preserved for resume." : "Empty session exited without completing a workout.");
+    } catch (error) {
+      operation.fail(error);
+      setStorageError("Could not exit your empty session. Please try again.");
+    } finally {
+      exitingSession.current = false;
+      setIsExitingSession(false);
+    }
+  }
+
   if (step === "start") {
     return (
       <ScrollView
@@ -461,10 +505,10 @@ export default function WorkoutsScreen() {
         <ScreenHeading eyebrow={new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} title="Today" />
         <View style={styles.startHero}>
           <View style={styles.startHeader}>
-            <View style={styles.heroTopRow}><Text style={[styles.eyebrow, { color: theme.colors.mutedText }]}>{scheduledProgram ? "YOUR PROGRAM" : "YOUR SESSION"}</Text><Ionicons name="calendar-outline" size={20} color={theme.colors.mutedText} /></View>
-            <Text style={[styles.startTitle, { color: theme.colors.text }]}>{scheduledDay && scheduledProgram ? getProgramDayName(scheduledProgram, scheduledDay) : "Ready to train?"}</Text>
+            <View style={styles.heroTopRow}><Text style={[styles.eyebrow, { color: theme.colors.mutedText }]}>{sessionStartedAt ? "UNFINISHED SESSION" : scheduledProgram ? "YOUR PROGRAM" : "YOUR SESSION"}</Text><Ionicons name="calendar-outline" size={20} color={theme.colors.mutedText} /></View>
+            <Text style={[styles.startTitle, { color: theme.colors.text }]}>{sessionStartedAt ? programPlan?.programName ?? "Your workout" : scheduledDay && scheduledProgram ? getProgramDayName(scheduledProgram, scheduledDay) : "Ready to train?"}</Text>
             <Text style={[styles.startCopy, { color: theme.colors.secondaryText }]}>
-              {scheduledDay?.kind === "training" ? `${scheduledProgram!.name} · ${scheduledDay.exercises.length} exercises · ${scheduledDay.exercises.reduce((sum, entry) => sum + entry.sets, 0)} sets` : scheduledDay?.kind === "rest" ? `${scheduledProgram!.name} · Scheduled recovery. Your streak is protected. You can still start an extra workout.` : scheduledProgram ? `Your program starts ${scheduledProgram.schedule.startDate}. Until then, you can log an unplanned workout.` : "Choose your exercises and record each completed set. No account required."}
+              {sessionStartedAt ? `${programPlan?.dayName ? `${programPlan.dayName} · ` : ""}${loggedExercises.length} ${loggedExercises.length === 1 ? "exercise" : "exercises"} saved. Your unfinished workout is ready to resume.` : scheduledDay?.kind === "training" ? `${scheduledProgram!.name} · ${scheduledDay.exercises.length} exercises · ${scheduledDay.exercises.reduce((sum, entry) => sum + entry.sets, 0)} sets` : scheduledDay?.kind === "rest" ? `${scheduledProgram!.name} · Scheduled recovery. Your streak is protected. You can still start an extra workout.` : scheduledProgram ? `Your program starts ${scheduledProgram.schedule.startDate}. Until then, you can log an unplanned workout.` : "Choose your exercises and record each completed set. No account required."}
             </Text>
             {sessionNotice ? <Text style={[styles.noticeText, { color: theme.colors.secondaryText }]}>{sessionNotice}</Text> : null}
             {storageError ? <Text style={[styles.errorText, { color: theme.colors.accent }]}>{storageError}</Text> : null}
@@ -483,9 +527,9 @@ export default function WorkoutsScreen() {
             ]}
           >
             <Ionicons name="play" size={18} color={theme.colors.onAccent} />
-            <Text style={[styles.primaryButtonText, { color: theme.colors.onAccent }]}>{isStartingSession ? "Opening workout…" : isSessionReady ? scheduledDay?.kind === "rest" ? "Start an extra workout" : "Start workout" : "Loading session…"}</Text>
+            <Text style={[styles.primaryButtonText, { color: theme.colors.onAccent }]}>{isStartingSession ? "Opening workout…" : isSessionReady ? sessionStartedAt ? "Resume workout" : scheduledDay?.kind === "rest" ? "Start an extra workout" : "Start workout" : "Loading session…"}</Text>
           </Pressable>
-          {scheduledDay?.kind === "training" ? <Pressable
+          {!sessionStartedAt && scheduledDay?.kind === "training" ? <Pressable
             accessibilityRole="button"
             accessibilityHint="Choose exercises yourself for this session. Your active program stays selected."
             disabled={!isSessionReady || isStartingSession}
@@ -496,7 +540,7 @@ export default function WorkoutsScreen() {
           </Pressable> : null}
         </View>
 
-        {scheduledDay?.kind === "training" ? <View style={styles.plannedSection}>
+        {!sessionStartedAt && scheduledDay?.kind === "training" ? <View style={styles.plannedSection}>
           <View style={styles.heroTopRow}><Text style={styles.programQueueTitle}>Planned exercises</Text><Text style={styles.programQueueHint}>Today</Text></View>
           <View style={styles.plannedGroup}>{scheduledDay.exercises.map((entry, index) => <View key={entry.id} style={[styles.plannedRow, index > 0 && styles.rowDivider]}>
             <View style={{ flex: 1, gap: 5 }}><Text style={styles.programQueueName}>{entry.exerciseName}</Text><Text style={styles.programQueueHint}>{formatProgramPrescription(entry)}</Text></View>
@@ -539,7 +583,19 @@ export default function WorkoutsScreen() {
         contentContainerStyle={styles.activeContent}
       >
         <View style={styles.activeHeader}>
-          <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>{programPlan ? "Program session" : "Active Session"}</Text>
+          <View style={styles.heroTopRow}>
+            <Text style={[styles.eyebrow, { color: theme.colors.accent }]}>{programPlan ? "Program session" : "Active Session"}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityHint={loggedExercises.length > 0 ? "Return to Today and keep this unfinished workout ready to resume." : "Return to Today without saving a workout."}
+              disabled={isSavingSession || isSavingExercise || isExitingSession}
+              onPress={exitSession}
+              style={({ pressed }) => [styles.exitSessionButton, { opacity: isSavingSession || isSavingExercise || isExitingSession ? 0.55 : pressed ? 0.78 : 1 }]}
+            >
+              <Ionicons name="exit-outline" size={18} color={colors.accent} />
+              <Text style={styles.exitSessionText}>{isExitingSession ? "Exiting…" : "Exit session"}</Text>
+            </Pressable>
+          </View>
           <Text style={[styles.activeTitle, { color: theme.colors.text }]}>{programPlan?.programName ?? "Session Log"}</Text>
           {programPlan?.dayName ? <Text style={styles.programQueueHint}>{programPlan.dayName}</Text> : null}
           <Text style={[styles.activeMeta, { color: theme.colors.secondaryText }]}>
@@ -552,7 +608,7 @@ export default function WorkoutsScreen() {
           <Text style={styles.programQueueTitle}>{pendingProgramExercises.length ? "Your planned exercises" : "All planned exercises logged."}</Text>
           <Text style={styles.programQueueHint}>{programPlan.exercises.length - pendingProgramExercises.length} of {programPlan.exercises.length} logged. Targets aren’t counted until you save each exercise.</Text>
           {pendingProgramExercises.map((entry) => <Pressable key={entry.id} accessibilityRole="button"
-            accessibilityLabel={`Log ${entry.exerciseName}, ${formatProgramPrescription(entry)}`} onPress={() => selectProgramExercise(entry)} style={styles.programQueueRow}>
+            accessibilityLabel={`Log ${entry.exerciseName}, ${formatProgramPrescription(entry)}`} disabled={isExitingSession || isSavingSession} onPress={() => selectProgramExercise(entry)} style={styles.programQueueRow}>
             <Text style={styles.programQueueOrder}>{programPlan.exercises.findIndex((item) => item.id === entry.id) + 1}</Text>
             <View style={{ flex: 1, gap: 6 }}><Text style={styles.programQueueName}>{entry.exerciseName}</Text>
               <Text style={styles.programQueueHint}>{formatProgramPrescription(entry)}</Text></View>
@@ -579,12 +635,13 @@ export default function WorkoutsScreen() {
 
           <Pressable
             accessibilityRole="button"
+            disabled={isExitingSession || isSavingSession}
             onPress={() => setStep("picker")}
             style={({ pressed }) => [
               styles.addExerciseButton,
               {
                 backgroundColor: theme.colors.accent,
-                opacity: pressed ? 0.82 : 1
+                opacity: isExitingSession || isSavingSession ? 0.55 : pressed ? 0.82 : 1
               }
             ]}
           >
@@ -594,13 +651,13 @@ export default function WorkoutsScreen() {
 
           <Pressable
             accessibilityRole="button"
-            disabled={isSavingSession}
+            disabled={isSavingSession || isExitingSession}
             onPress={saveSession}
             style={({ pressed }) => [
               styles.saveSessionButton,
               {
                 borderColor: theme.colors.border,
-                opacity: isSavingSession ? 0.55 : pressed ? 0.78 : 1
+                opacity: isSavingSession || isExitingSession ? 0.55 : pressed ? 0.78 : 1
               }
             ]}
           >
@@ -854,6 +911,8 @@ function SessionEntryRow({ entry, index, onDelete }: SessionEntryRowProps) {
 
 const themedStyles = createThemedStyles((colors, ui) => ({
   heroTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%" },
+  exitSessionButton: { alignItems: "center", flexDirection: "row", gap: 6, minHeight: 44, paddingHorizontal: 8 },
+  exitSessionText: { color: colors.accent, fontSize: 14, fontWeight: "600" },
   plannedSection: { gap: 12, marginTop: 24 },
   plannedGroup: { ...ui.group, paddingHorizontal: 16 },
   plannedRow: { paddingVertical: 16, flexDirection: "row", alignItems: "center", gap: 12 },

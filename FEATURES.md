@@ -61,6 +61,7 @@ Purpose: Make weight lifting logging fast, tactile, and low-typing.
 Current capabilities:
 
 - Start an active session from the Session tab.
+- Exit an empty session without recording a workout; exit a session with saved exercises to pause and resume from Today. Existing results and program snapshots stay preserved.
 - Add exercises as the workout happens.
 - Choose catalog exercises from the selector.
 - Add custom exercises by name.
@@ -110,6 +111,7 @@ Status: Editable starter programs, user-created multi-day programs, weekly/cycle
 - Configure 1–12 sets with exact reps, a rep range (1–100), or a timed target (1 second–60 minutes per set). Repeated lifts have independent targets.
 - Drag handles to reorder, including edge auto-scroll; move-up/down buttons provide an accessible alternative.
 - Save and edit programs locally without an account. Canceling edited drafts and deleting saved programs require confirmation.
+- Saved and starter cards open a read-only overview with Activate and Edit actions, then exercises/targets for every day. Editing is explicit. Starters can save and activate a fresh copy directly after confirmation; browsing never saves a program.
 - Start a program workout with its saved exercise order and targets. Existing active workouts cannot be replaced.
 - Planned targets do not count as completed sets. The logger captures actual results, preserving chart and streak behavior.
 - Timed work logs actual duration separately from reps and appears in workout history. It counts toward completed workouts/streaks but is excluded from rep-based strength, weight, and volume charts. Logging is manual; a countdown timer is not included.
@@ -117,7 +119,7 @@ Status: Editable starter programs, user-created multi-day programs, weekly/cycle
 - Choose Training or Rest per day; new days default to Rest. A prominent active-program panel shows today's training/recovery and confirmed deactivation. Activate or switch saved programs with confirmation; the selected program appears first, ahead of starter templates. Session automatically loads today's training exercises; users tap each one to log actual weight, reps/time, and sets. Start without program offers a manual workout while retaining the selection; deactivation returns subsequent starts to normal tracking. Planned rest protects streaks from activation onward, including days away from the app. Missed training days still break streaks unless manually marked as rest. Existing workouts survive switches/deactivation.
 - Programs and Session refresh after successful training changes, resume and date rollover with stale-read protection. Schedule revisions also update enabled workout/rest reminders and preserve earlier streak history; cross-storage lifecycle tests cover activation, switch, edit, deactivation, completion and failed-write safety.
 - Session shows today's planned workout/recovery. Schedule edits, switches, stops, and deletions preserve earlier rest-day history and workout snapshots created on the current schema. Prelaunch training setups were intentionally reset; old formats are not migrated.
-- Built-in, opt-in starter programs: Push/Pull/Legs (Mon–Sat, Sunday rest), Upper/Lower (Mon/Tue/Thu/Fri, three rest days), and Full Body Every Other Day (A/rest/B/rest, a rolling 4-day cycle). PPL and Upper/Lower cover major groups at least twice weekly; FBEOD covers them 3–4 times weekly with lower per-session volume. All use real RepDB exercises, rep ranges, moderate working sets, and timed planks. Preview every day before creating an editable copy. No weights, completed workouts, or active schedules are seeded; copies save OFF until explicitly activated. Automatic rest never fills missed training days. A full adherence-history calendar is not yet implemented.
+- Built-in, opt-in starter programs: Push/Pull/Legs (Mon–Sat, Sunday rest), Upper/Lower (Mon/Tue/Thu/Fri, three rest days), and Full Body Every Other Day (A/rest/B/rest, a rolling 4-day cycle). PPL and Upper/Lower cover major groups at least twice weekly; FBEOD covers them 3–4 times weekly with lower per-session volume. All use real RepDB exercises, rep ranges, moderate working sets, and timed planks. Preview every day, then activate or edit a copy. No weights, completed workouts, or active schedules are seeded; editor copies save inactive, and direct activation is confirmed. Automatic rest never fills missed training days. A full adherence-history calendar is not yet implemented.
 
 ### Streaks
 

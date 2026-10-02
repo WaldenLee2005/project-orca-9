@@ -38,11 +38,13 @@ Expo Router foundation for the lifting tracker MVP.
 
 8. Confirm Profile still offers optional sign-in and that local workouts/search/charts work without an account.
 
+   Start an empty session and choose **Exit session**. Verify Today offers a fresh start, with no new history or streak credit. Log an exercise, exit again, and verify **Resume workout** preserves the results and program snapshot, including after reload. Try exiting a planned session before any exercises are logged; the saved program must stay unchanged.
+
 9. In Programs, create a named program, add several lifts, change their sets/rep goals, drag a handle to reorder, and try the up/down buttons. Save and reload; the order and targets should remain. Edit and verify invalid/empty targets cannot overwrite the saved version.
 
 10. Start a saved program when no workout is active. Verify the ordered queue, prefilled logger, and actual-result saving. Reload mid-workout to check remaining exercises. Starting another program must leave the active workout untouched.
 
-11. Create a weekly plan with two different training days and rest days. Only Training and Rest should be available, with new days defaulting to Rest. Give each training day different lifts/targets. Save/reload, choose **Turn program on**, confirm, and verify Session shows today's correct day. Use the ordinary **Start Session** button: today's exercises should already be in the planned queue, with no completed sets. Tap one, record actual results, reload, and check remaining exercises. Repeat with a 4-day cycle. Rest days should protect the streak without manual marking and allow an unplanned workout if desired. Turning a program off or switching programs must preserve an unfinished workout, while future sessions follow the new setting. Shortening days with training/exercises must warn first. Saving alone must not turn the program on.
+11. Create a weekly plan with two different training days and rest days. Only Training and Rest should be available, with new days defaulting to Rest. Give each training day different lifts/targets. Save/reload, open the overview, choose **Activate program**, confirm, and verify Session shows today's correct day. Use the ordinary **Start Session** button: today's exercises should already be in the planned queue, with no completed sets. Tap one, record actual results, reload, and check remaining exercises. Repeat with a 4-day cycle. Rest days should protect the streak without manual marking and allow an unplanned workout if desired. Turning a program off or switching programs must preserve an unfinished workout, while future sessions follow the new setting. Shortening days with training/exercises must warn first. Saving alone must not turn the program on.
 
 The streak count includes a muted `(x active / x rest)` subtitle for the current streak only. Multiple workouts on one day count once; completed workouts override same-day rest. Active plus rest counts must equal the streak, including when today is still open.
 
@@ -91,7 +93,7 @@ The app uses the Native design: system typography, blue actions, flat grouped su
 
 ## Starter programs
 
-Open **Programs → Starter programs**, preview a plan and its days, and choose **Use this program**. Review/edit the start date, exercises and targets, then **Save program**. Choose **Turn program on** and confirm to enable today's exercise queue and automatic rest protection. Nothing is saved or activated just by browsing. Canceling a new preset copy requires confirmation; existing programs and workout history stay intact.
+Open **Programs → Starter programs** and tap a plan. Its read-only overview shows **Activate program** and **Edit program**, followed by every day's exercises, targets and rest days. **Activate program** and confirmation save your own copy starting today and enable its schedule without entering the builder. **Edit program** opens an unsaved editable copy; **Save program** keeps a new copy inactive and returns to its overview. Nothing is saved by browsing. Canceling an edited preset copy requires confirmation; existing programs and workouts stay intact. Saved program cards open the same overview, and their single-day starts, deactivation and deletion remain available.
 
 - Push/Pull/Legs: Monday–Saturday training, Sunday rest; 10–13 working sets per session.
 - Upper/Lower: Monday/Tuesday/Thursday/Friday training, Wednesday/Saturday/Sunday rest; 13–16 working sets per session.
