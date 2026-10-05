@@ -2,7 +2,7 @@
 
 ## Requested roadmap additions
 
-Requested October 4, 2026. These are planned capabilities, not implemented features. Release placement, dates and dependencies live in `ROADMAP.md` and the Notion roadmap.
+Requested October 4, 2026 and confirmed for the January 4, 2027 launch. These are planned capabilities, not implemented features. Specific start/completion dates and dependencies live in `ROADMAP.md` and the Notion roadmap. Core-flow beta starts November 2; all nine target implementation completion November 29 and join full-feature beta December 7–20 after the December 6 freeze.
 
 | Feature | Planned behavior | Completion checks |
 | --- | --- | --- |
@@ -10,7 +10,7 @@ Requested October 4, 2026. These are planned capabilities, not implemented featu
 | Notes to self | Save private workout notes and review them later; exercise-specific notes can extend the initial scope. | Add/edit/delete notes, retain them offline after reload on native/web, and display them in workout history without sharing them to the feed. |
 | Recaps | Show a completion recap and weekly training summary from actual saved work. | Correct exercise/set/volume/time totals, PRs and consistency; respect timed work, rest days and history corrections without inventing results. |
 | Feed | Share opted-in workout and PR summaries with friends. | Private-by-default publishing, friendship/privacy checks, deletion/unsharing, and no automatic exposure of full workout logs or private notes. |
-| Music listened to | Remember the tracks or playlists associated with a workout. | Choose manual entry first or a provider connection, retain metadata in history, and define consent/permissions before automatic capture. |
+| Music listened to | Manually record song/playlist names or links associated with a workout. | Retain metadata in workout history with offline save/reload and editing/deletion. Automatic capture requires a later provider choice and consent/permissions. |
 | Supplements | Keep a private log of supplements the user records. | User-entered product, amount/unit and time with edit/delete, offline persistence and recap inclusion only when chosen. |
 | Offline mode with reconnect sync | Continue logging offline and sync account-owned data after connectivity returns. | Durable pending changes, idempotent retries, account isolation, visible sync/conflict state, and edits/deletions surviving reconnect without duplication or data loss. Guest logging stays local. |
 | Workout time | Show elapsed workout time and save duration with completed sessions. | Explicit pause/resume rules, correct background/restart handling, and duration in history/recaps. Elapsed workout time stays separate from timed exercise sets. |
@@ -187,7 +187,7 @@ Expected capabilities:
 
 - Program consistency.
 
-## Later Features
+## Additional Features and Integrations
 
 ### Developer Diagnostics
 
@@ -206,7 +206,7 @@ Current capabilities:
 
 ### Social Feed
 
-Status: In progress; auth/profile foundation started.
+Status: Auth/profile foundation started; friends/feed publishing planned for v1, November 16–29. Hosted account readiness is targeted October 12–25.
 
 Purpose: Let users connect with friends and see opt-in lifting updates.
 

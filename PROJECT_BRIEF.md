@@ -8,7 +8,7 @@ The first version focuses on fast, tap-driven session logging: start a session, 
 
 Long term, the app should help users manage lifting programs, understand strength progress, maintain realistic streaks that respect rest days, and optionally connect with health and nutrition data sources.
 
-The app should eventually include a lightweight social layer where users can follow friends and see opt-in updates such as new PRs, completed sessions, and weekly consistency. This requires accounts and a shared backend, but should not compromise the local-first workout logging flow.
+The first release should include a lightweight social layer where users can connect with friends and see opt-in updates such as new PRs and completed sessions. This requires accounts and a shared backend, while keeping the local-first workout logging flow usable offline.
 
 ## Target User
 
@@ -49,19 +49,19 @@ Included:
 - Workout history.
 - Basic lifting progress dashboard.
 - Program tracking foundation.
+- Vacation routines from available equipment, private notes, recaps, a friends feed, music metadata, supplement logging, reconnect sync, workout time and a rest timer; see the dated release scope below.
 
 Deferred:
 
 - Apple Health integration.
 - Fitbit integration.
 - Food tracker integration.
-- Social features, until the local logging loop and managed backend foundation are ready.
 - AI-generated workout plans.
 - Trainer/client management.
 
 ## Requested next capabilities
 
-The roadmap now includes vacation routines generated from available equipment, private notes, workout/weekly recaps, a friends feed, music metadata, supplement logging, offline logging with reconnect sync, elapsed workout time and a rest timer. The proposed January 4, 2027 release adds notes, recaps and the two timers; the larger additions remain later work. See `ROADMAP.md` and `FEATURES.md` for scope and acceptance checks. Reconnect sync is new work; offline local logging already functions.
+All nine requested capabilities are in scope for the January 4, 2027 launch: vacation routines generated from available equipment, private notes, workout/weekly recaps, a friends feed, music metadata, supplement logging, offline logging with reconnect sync, elapsed workout time and a rest timer. Core-flow beta starts November 2 while development continues; the additions target implementation completion November 29, acceptance/freeze December 6 and full-feature beta December 7–20. See `ROADMAP.md` for specific feature dates and `FEATURES.md` for acceptance checks. Reconnect sync is new work; offline local logging already functions. Vacation mode uses reviewed catalog-based routine generation; hosted AI generation and automatic music-provider capture remain later work.
 
 ## Onboarding
 

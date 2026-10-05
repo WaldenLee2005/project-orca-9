@@ -1,0 +1,1679 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orca launch roadmap</title>
+  <style>
+:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --icon-size: 16px;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --corner-shape: round;
+  --radius: var(--border-radius-lg, 10px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 17 17'%3E%3Cpath d='M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z'/%3E%3C/svg%3E");
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html > body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: var(--visualize-paint-gutter, 0px);
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans) !important;
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+.cursor-interaction {
+  cursor: var(--cursor-interaction, pointer);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: var(--cursor-interaction, pointer);
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive > .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align="right"]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align="center"]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: var(--corner-shape);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+.widget {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  box-shadow: 0 0 0 0.5px var(--border-strong, var(--border));
+  color: var(--foreground);
+  background: var(--background);
+}
+
+#widget > :not(.card, .widget, .progress) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+hr {
+  width: 100%;
+  height: 1px;
+  margin-block: 6px;
+  border: 0;
+  background: var(--border);
+}
+
+.nav {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.progress {
+  display: flex;
+  height: 8px;
+  margin-block: calc((var(--line-height-normal, 1.5em) - 8px) / 2);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.progress-bar:only-child {
+  border-radius: var(--radius-full);
+}
+
+.progress-bar {
+  height: 100%;
+  flex-shrink: 0;
+  border: 0;
+  background: var(--viz-series-1);
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls > .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls > .form-label > :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.nav-link,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn,
+.nav-link {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: var(--cursor-interaction, pointer);
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover,
+.nav-link:not(:disabled):not([aria-disabled="true"]):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.nav-pills .nav-link {
+  min-width: 0;
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.nav-justified .nav-link {
+  flex: 1 1 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.nav-pills .nav-link.active {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+/* Shared preview chrome; product styles stay inside each variant. */
+.viz-dotted-background {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--foreground) 14%, transparent) 0.8px,
+    transparent 0.8px
+  );
+  background-position: center;
+  background-size: 16px 16px;
+}
+
+.viz-carousel {
+  position: relative;
+  min-width: 0;
+}
+
+.viz-carousel:has(> .viz-carousel-controls) {
+  min-height: calc(60px + var(--viz-carousel-picker-height, 0px));
+  padding-bottom: 60px;
+}
+
+.viz-carousel > [data-variant][hidden] {
+  display: none !important;
+}
+
+.viz-carousel > [data-variant] {
+  isolation: isolate;
+}
+
+.viz-carousel-controls {
+  --viz-carousel-hover: light-dark(
+    color-mix(in srgb, var(--foreground) 5.4%, transparent),
+    color-mix(in srgb, var(--foreground) 7.8%, transparent)
+  );
+  position: absolute;
+  z-index: 2;
+  bottom: 8px;
+  left: 50%;
+  display: flex;
+  width: max-content;
+  /* Leave room for the host's design-controls launcher at the trailing edge. */
+  max-width: calc(100% - 96px);
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-sans);
+  /* Match the settings dropdown chrome independently of the content font size. */
+  font-size: 13px;
+  font-weight: var(--font-weight-normal);
+  line-height: 18px;
+  transform: translateX(-50%);
+  user-select: none;
+}
+
+/* Keep authored mockup button styles out of the shared carousel chrome. */
+.viz-carousel-controls button,
+.viz-carousel-picker > summary {
+  display: flex !important;
+  height: auto !important;
+  min-height: 30px;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px;
+  padding: 0 6px !important;
+  -webkit-app-region: no-drag;
+  border: 0 !important;
+  border-radius: 14px !important;
+  color: inherit !important;
+  background: transparent !important;
+  font: inherit !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.viz-carousel-controls > button,
+.viz-carousel-picker > summary {
+  position: relative;
+  isolation: isolate;
+}
+
+.viz-carousel-controls > button {
+  --icon-size: 16px;
+  width: 30px !important;
+  padding: 0 !important;
+}
+
+.viz-carousel-picker > summary {
+  padding-inline: 12px !important;
+}
+
+.viz-carousel-controls .viz-carousel-caret {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin: 0;
+  color: inherit;
+  transform: rotate(180deg);
+}
+
+.viz-carousel-controls > button > svg,
+.viz-carousel-controls .viz-carousel-caret,
+.viz-carousel-count {
+  opacity: 0.5;
+}
+
+.viz-carousel-controls > button::before,
+.viz-carousel-picker > summary::before {
+  position: absolute;
+  z-index: -1;
+  inset: 3px;
+  border-radius: 12px;
+  content: "";
+  pointer-events: none;
+}
+
+.viz-carousel-controls > button:hover::before,
+.viz-carousel-picker > summary:hover::before {
+  background: var(--viz-carousel-hover);
+}
+
+.viz-carousel-controls > button,
+.viz-carousel-controls [data-lucide],
+.viz-carousel-controls .lucide {
+  flex-shrink: 0;
+}
+
+.viz-carousel-picker {
+  min-width: 0;
+}
+
+.viz-carousel-picker > summary {
+  min-width: 0;
+  list-style: none;
+}
+
+.viz-carousel-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.viz-carousel-count {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.viz-carousel-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viz-carousel-options {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  max-height: 240px;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--background);
+  box-shadow: 0 4px 12px light-dark(rgb(0 0 0 / 6%), rgb(0 0 0 / 25%));
+}
+
+.viz-carousel-options > button {
+  border-radius: max(0px, calc(var(--radius-lg) - 5px)) !important;
+  width: 100% !important;
+  min-height: 28px;
+  justify-content: flex-start !important;
+  padding: 4px 8px !important;
+  font-size: var(--font-size-small) !important;
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.viz-carousel-options > [aria-current="true"],
+.viz-carousel-options > button:hover {
+  background: var(--viz-carousel-hover) !important;
+}
+
+.btn:disabled,
+.nav-link:disabled,
+.nav-link[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type="file"] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type="file"]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type="file"]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type="color"] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: var(--corner-shape);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type="checkbox"]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: "";
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type="radio"] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type="radio"]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: "";
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+  [aria-pressed="true"],
+  [aria-selected="true"],
+  .is-selected
+) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed="true"], [aria-selected="true"], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible,
+.nav-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.viz-carousel-controls :is(button, summary):focus-visible {
+  outline: 2px solid var(--ring) !important;
+  outline-offset: 2px !important;
+}
+
+@media (pointer: coarse) {
+  .viz-carousel:has(> .viz-carousel-controls) {
+    min-height: calc(76px + var(--viz-carousel-picker-height, 0px));
+    padding-bottom: 76px;
+  }
+
+  .btn,
+  .nav-link,
+  .viz-carousel-controls button,
+  .viz-carousel-picker > summary,
+  .form-control,
+  .form-select {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Keep small-screen WebKit from zooming when a text field receives focus. */
+  .form-control,
+  .form-select {
+    font-size: max(16px, var(--font-size-normal));
+  }
+
+  .form-control[type="file"]::file-selector-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .form-control-color[type="color"] {
+    width: 44px;
+    height: 44px;
+  }
+
+  .form-control:is(
+    [type="date"],
+    [type="datetime-local"],
+    [type="month"],
+    [type="time"],
+    [type="week"]
+  ) {
+    min-width: 0;
+    max-width: 100%;
+    padding-block: 8px;
+  }
+
+  .form-check {
+    min-height: 44px;
+    padding-inline: 15px;
+  }
+
+  .form-check-input {
+    position: relative;
+  }
+
+  .form-check-input::after {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    content: "";
+    transform: translate(-50%, -50%);
+  }
+
+  .form-check-label {
+    display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .form-range {
+    height: 44px;
+    touch-action: pan-y;
+  }
+
+  .form-range::-webkit-slider-runnable-track {
+    height: 44px;
+  }
+
+  .form-range::-moz-range-track {
+    height: 44px;
+  }
+
+  .form-range::-webkit-slider-thumb {
+    margin-top: 12px;
+  }
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget > svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: var(--icon-size) !important;
+  height: var(--icon-size) !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+    body { margin: 0; padding: 20px 14px; }
+    main { max-width: 960px; margin: 0 auto; }
+    .orca-standalone:not([data-tooltips-ready]) [data-tooltip]:is(:hover,:focus-visible)::after {
+      content: attr(data-tooltip); position: absolute; z-index: 30; top: 100%;
+      left: var(--orca-tooltip-left, 0px); width: var(--orca-tooltip-width, min(400px, calc(100vw - 60px)));
+      box-sizing: border-box; padding: 12px; background: var(--popover); color: var(--popover-foreground);
+      border: 1px solid var(--border); border-radius: 8px; white-space: pre-line;
+      font-weight: 400; overflow-wrap: anywhere; pointer-events: none;
+    }
+    .orca-native-tooltip { position: absolute; z-index: 40; box-sizing: border-box; padding: 12px;
+      background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--border);
+      border-radius: 8px; overflow-wrap: anywhere; }
+    .orca-native-tooltip[hidden] { display: none; }
+    .orca-native-tooltip p { margin: 0 0 8px; white-space: pre-line; }
+    .orca-native-tooltip a { color: var(--foreground); }
+    .orca-static-path { padding-left: 28px; border-left: 1px solid var(--border); }
+    .orca-static-path li { margin-bottom: 16px; }
+    .orca-static-path ul { margin: 14px 0; padding-left: 22px; }
+    .orca-static-path a { position: relative; color: var(--foreground); }
+    .orca-static-path span { display: block; color: var(--muted-foreground); }
+  </style>
+</head>
+<body class="orca-standalone">
+  <main>
+<div id="orca-launch-path-20261004">
+  <h3>Orca launch path · 2026–2027</h3>
+  <div class="orca-graph" role="group" aria-label="Release workflow with nine concurrent feature branches, support work and a rolling beta. Dates run from October 5, 2026 to January 4, 2027.">
+    <svg class="orca-lines" aria-hidden="true"></svg>
+    <div class="orca-nodes"></div>
+  </div>
+  <script type="application/json" id="orca-launch-data-20261004">{"rows":[{"Name":"Confirm v1 scope and acceptance checks","ID":"R01","Workstream":"Planning","Phase":"Scope","Status":"Planned","Priority":"High","Start":"10/05/2026","End":"10/07/2026","Depends on":"","Completion criteria":"Agree all nine requested features for launch with measurable acceptance checks, supported platforms and tester needs; define data ownership and schema contracts for reconnect sync.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/ROADMAP.md"},{"Name":"Build native apps and test the baseline","ID":"R02","Workstream":"Quality","Phase":"Foundation","Status":"Planned","Priority":"High","Start":"10/05/2026","End":"10/11/2026","Depends on":"R01","Completion criteria":"Rebuilt iOS and Android apps open all tabs, log offline and reload saved data; record device/build evidence.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/apps/mobile/README.md"},{"Name":"Make logging fast and reliable in the gym","ID":"R03","Workstream":"Workouts","Phase":"Core flows","Status":"Planned","Priority":"High","Start":"10/08/2026","End":"10/18/2026","Depends on":"R02","Completion criteria":"Phone testing confirms fast set entry, copy/add set, resume after close, empty-session exit, timed work and duplicate-save protection.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/apps/mobile/src/features/workouts/README.md"},{"Name":"Add workout history details and summaries","ID":"R04","Workstream":"History","Phase":"Core flows","Status":"Planned","Priority":"High","Start":"10/12/2026","End":"10/25/2026","Depends on":"R02","Completion criteria":"Browse older completed sessions and open actual exercises, individual sets, weights, reps/time and totals after reload; saving a workout shows its completion summary with correct actual-set totals.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/FEATURES.md"},{"Name":"Correct and delete completed workout mistakes","ID":"R05","Workstream":"History","Phase":"Core flows","Status":"Planned","Priority":"High","Start":"10/19/2026","End":"11/01/2026","Depends on":"R04","Completion criteria":"Confirmed edits/deletes persist, refresh charts, coaching evidence, streaks and reminders, preserve unrelated data and recover visibly from failed writes.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/FEATURES.md"},{"Name":"Add previous values and exercise shortcuts","ID":"R06","Workstream":"Workouts","Phase":"Core flows","Status":"Planned","Priority":"Medium","Start":"10/19/2026","End":"11/01/2026","Depends on":"R03","Completion criteria":"Repeat prior actual values with clear context; favorites/recent exercises shorten search without creating completed sets.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/FEATURES.md"},{"Name":"Verify upgrades and training data safety","ID":"R07","Workstream":"Storage","Phase":"Reliability","Status":"Planned","Priority":"High","Start":"10/26/2026","End":"11/08/2026","Depends on":"R04, R05, F02, F07, F08","Completion criteria":"Upgrades preserve existing workouts/programs/auth; verify migration and data contracts for planned notes, music, supplement, vacation and timer fields before cloud sync; failure/retry and reload checks pass on native and web; no new training reset.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/apps/mobile/src/storage/README.md"},{"Name":"Add program adherence history","ID":"R08","Workstream":"Programs","Phase":"Complete features","Status":"Planned","Priority":"Medium","Start":"11/02/2026","End":"11/08/2026","Depends on":"R04","Completion criteria":"A calendar distinguishes completed training, unscheduled workouts, planned/manual rest and missed training using dated schedule revisions and existing streak rules.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/ROADMAP.md"},{"Name":"Verify reminder permissions and delivery","ID":"R09","Workstream":"Reminders","Phase":"Complete features","Status":"Planned","Priority":"High","Start":"11/02/2026","End":"11/15/2026","Depends on":"R02, F08","Completion criteria":"Physical-device evidence covers opt-in/denial/recovery, delivery, completion cancellation, schedule edits, timezone changes and Android delay expectations.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/apps/mobile/src/features/reminders/README.md"},{"Name":"Verify native screenshot import and correction","ID":"R10","Workstream":"Import","Phase":"Complete features","Status":"Planned","Priority":"High","Start":"11/09/2026","End":"11/15/2026","Depends on":"R02","Completion criteria":"Native OCR build/device checks cover clear and blank images, cancel/retry, offline/resume and explicit target/schedule correction; saving leaves imports inactive.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/apps/mobile/src/features/programs/README.md"},{"Name":"Review coaching policy and define shipped scope","ID":"R11","Workstream":"Coach","Phase":"Complete features","Status":"Planned","Priority":"High","Start":"11/09/2026","End":"11/22/2026","Depends on":"R03, R07","Completion criteria":"Qualified review covers thresholds and explanations; decide durable decision history, opt-in behavior and release eligibility for today-only suggestions.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/COACH_IMPLEMENTATION_PLAN.md"},{"Name":"Pilot coaching suggestions and undo","ID":"R12","Workstream":"Coach","Phase":"Complete features","Status":"Planned","Priority":"High","Start":"11/16/2026","End":"11/29/2026","Depends on":"R11","Completion criteria":"Only reviewed behavior reaches testers; no-history, long-break, low-readiness, rest, repeated-hard and stale-proposal cases behave correctly; undo works.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/COACH_IMPLEMENTATION_PLAN.md"},{"Name":"Finish optional accounts and onboarding","ID":"R13","Workstream":"Accounts","Phase":"Complete features","Status":"Planned","Priority":"High","Start":"10/12/2026","End":"10/25/2026","Depends on":"R02","Completion criteria":"Confirm hosted setup, security policies and account ownership/schema contracts for sync/feed by October 25; device-verify signup/confirmation/signin/recovery, avatar/privacy, account deletion and profile/avatar cleanup with explicit local-training-data handling; guest/offline/error flows work.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/apps/mobile/src/lib/README.md"},{"Name":"Verify progress and consistency metrics","ID":"R14","Workstream":"Progress","Phase":"Complete features","Status":"Planned","Priority":"High","Start":"11/23/2026","End":"12/06/2026","Depends on":"R05, R08, F03","Completion criteria":"Charts match actual individual sets; timed/warm-up handling and empty/single/multiple-point states are reviewed; history corrections refresh metrics.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/apps/mobile/src/features/progress/README.md"},{"Name":"Finish phone usability and accessibility","ID":"R15","Workstream":"Design","Phase":"Complete features","Status":"Planned","Priority":"High","Start":"11/16/2026","End":"12/06/2026","Depends on":"R03, R04, R08, F01, F02, F03, F04, F05, F06, F07, F08, L02","Completion criteria":"All v1 flows, including the nine requested features, work at narrow phone sizes in light/dark mode with readable text, usable controls, keyboard/screen-reader behavior and useful error/empty states.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/apps/mobile/README.md"},{"Name":"Freeze the v1 feature set","ID":"R16","Workstream":"Release","Phase":"Feature freeze","Status":"Planned","Priority":"High","Start":"12/01/2026","End":"12/06/2026","Depends on":"R05, R06, R07, R08, R09, R10, R12, R13, R14, R15, F01, F02, F03, F04, F05, F06, F07, F08, L02","Completion criteria":"Target implementation of all nine requested features by November 29; all agreed v1 features meet acceptance checks by December 6 with release gates explicit; only release fixes enter the candidate.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/ROADMAP.md"},{"Name":"Prepare private beta builds and feedback","ID":"R17","Workstream":"Release","Phase":"Beta","Status":"Planned","Priority":"High","Start":"10/26/2026","End":"11/01/2026","Depends on":"R03, R04","Completion criteria":"Package installable early core beta builds for selected testers; capture device, build, reproduction and severity; publish incremental builds as features are ready.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/ROADMAP.md"},{"Name":"Run rolling real gym beta sessions","ID":"R18","Workstream":"Quality","Phase":"Beta","Status":"Planned","Priority":"High","Start":"11/02/2026","End":"12/20/2026","Depends on":"R17","Completion criteria":"Test core flows from November 2, add each ready feature, and cover all nine requested features in full-feature beta December 7\u201320; coaching reaches testers only in reviewed eligible scope; record actual gym, offline/reconnect, restart/resume and program/rest findings.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/ROADMAP.md"},{"Name":"Fix beta issues and run release regressions","ID":"R19","Workstream":"Quality","Phase":"Beta","Status":"Planned","Priority":"High","Start":"11/02/2026","End":"12/20/2026","Depends on":"R16, R18","Completion criteria":"Triage and fix issues throughout the rolling beta; after December 6, run final release regressions across all nine features, account switching/deletion, offline edits/deletions followed by reconnect sync, feed privacy, timers and background/resume; automated and device checks pass with no known data-loss defects.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/AGENTS.md"},{"Name":"Prepare store assets and privacy disclosures","ID":"R20","Workstream":"Release","Phase":"Release preparation","Status":"Planned","Priority":"High","Start":"12/07/2026","End":"12/20/2026","Depends on":"R16","Completion criteria":"Icons/splash, screenshots, listing, support contact and privacy/account-deletion disclosures match shipped behavior and enabled services, including account sync, friends feed, music metadata and supplements.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/ROADMAP.md"},{"Name":"Approve release candidate and submit","ID":"R21","Workstream":"Release","Phase":"Release preparation","Status":"Planned","Priority":"High","Start":"12/21/2026","End":"12/27/2026","Depends on":"R19, R20","Completion criteria":"Candidate passes feature/data/device gates; choose rollout and confirm store submission/approval status for each platform.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/ROADMAP.md"},{"Name":"Resolve store feedback and keep release buffer","ID":"R22","Workstream":"Release","Phase":"Release preparation","Status":"Planned","Priority":"High","Start":"12/28/2026","End":"01/03/2027","Depends on":"R21","Completion criteria":"Handle review feedback and regressions; retain a tested candidate and documented go/no-go decision.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/ROADMAP.md"},{"Name":"Release v1 when all gates pass","ID":"R23","Workstream":"Release","Phase":"Launch","Status":"Planned","Priority":"High","Start":"01/04/2027","End":"01/04/2027","Depends on":"R22","Completion criteria":"Launch only after required reviews, store approvals and verification; record release version and support/issue follow-up.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/ROADMAP.md"},{"Name":"Optional backup and restore","ID":"L01","Workstream":"Storage","Phase":"Later","Status":"Backlog","Priority":"Medium","Start":"","End":"","Depends on":"","Completion criteria":"Define and implement reviewed export/restore and opt-in backup with clear ownership and preservation of existing local data; reconnect synchronization is tracked separately in F06.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/ARCHITECTURE.md"},{"Name":"Feed","ID":"L02","Workstream":"Social","Phase":"Complete features","Status":"Planned","Priority":"Medium","Start":"11/16/2026","End":"11/29/2026","Depends on":"R13, F06","Completion criteria":"Build opt-in compact workout/PR sharing with friend controls and tested audience permissions; retries create no duplicate events, deletion/unsharing removes visibility, and private notes/full raw logs stay private.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/FEATURES.md"},{"Name":"Plan health and nutrition integrations","ID":"L03","Workstream":"Integrations","Phase":"Later","Status":"Backlog","Priority":"Low","Start":"","End":"","Depends on":"","Completion criteria":"Choose providers and permission/data boundaries after v1 proves the core lifting flow.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/FEATURES.md"},{"Name":"Expand adaptive coaching and hosted import","ID":"L04","Workstream":"Coach","Phase":"Later","Status":"Backlog","Priority":"Low","Start":"","End":"","Depends on":"","Completion criteria":"Design permanent adaptation and durable decision history; add provider consent, auth, quotas, privacy and server controls before hosted AI.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/COACH_IMPLEMENTATION_PLAN.md"},{"Name":"Vacation mode","ID":"F01","Workstream":"Programs","Phase":"Complete features","Status":"Planned","Priority":"Medium","Start":"11/16/2026","End":"11/29/2026","Depends on":"R07, R08, R11","Completion criteria":"Choose travel dates and available equipment; generate a reviewed editable temporary routine using suitable catalog exercises; preserve the home program/history and explicitly restore the regular schedule.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/FEATURES.md"},{"Name":"Notes to self","ID":"F02","Workstream":"Workouts","Phase":"Core flows","Status":"Planned","Priority":"Medium","Start":"10/19/2026","End":"11/01/2026","Depends on":"R04","Completion criteria":"Add/edit/delete private workout notes, retain them through offline save/reload and history corrections on native/web, and keep them out of social publishing. Exercise-specific notes can extend the first scope.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/FEATURES.md"},{"Name":"Recaps","ID":"F03","Workstream":"Progress","Phase":"Complete features","Status":"Planned","Priority":"Medium","Start":"11/02/2026","End":"11/15/2026","Depends on":"R04, R05, F07","Completion criteria":"Provide completion and weekly recaps from actual saved sessions: working sets, volume, workout time, PRs and consistency; handle empty/sparse data, timed work/rest days and refresh after corrections.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/FEATURES.md"},{"Name":"Music listened to","ID":"F04","Workstream":"Integrations","Phase":"Complete features","Status":"Planned","Priority":"Low","Start":"11/02/2026","End":"11/08/2026","Depends on":"R04","Completion criteria":"Manually attach a song/playlist name or link to a workout and show it in history; define provider choice and consent/permissions before separately adding automatic listening capture.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/FEATURES.md"},{"Name":"Supplements","ID":"F05","Workstream":"Workouts","Phase":"Complete features","Status":"Planned","Priority":"Low","Start":"11/09/2026","End":"11/15/2026","Depends on":"F02","Completion criteria":"Privately record a supplement name, optional amount/unit/time and notes; edit/delete and offline reload work; recap inclusion is optional.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/FEATURES.md"},{"Name":"Offline mode with reconnect sync","ID":"F06","Workstream":"Storage","Phase":"Complete features","Status":"Planned","Priority":"High","Start":"11/09/2026","End":"11/29/2026","Depends on":"R07, R13, F01, F02, F04, F05, F07, F08","Completion criteria":"Keep logging offline; account-owned pending changes, including agreed notes, music, supplement, duration and vacation records, survive restart and sync on reconnect with deduplicated retries, conflict/error visibility, edits/deletions and account isolation; guest data stays local until explicitly associated and derived feed events respect private-sharing boundaries.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/FEATURES.md"},{"Name":"Workout time","ID":"F07","Workstream":"Workouts","Phase":"Core flows","Status":"Planned","Priority":"Medium","Start":"10/19/2026","End":"11/01/2026","Depends on":"R03, R04","Completion criteria":"Show elapsed session time and save duration in history/recaps; define whether pauses count and persist excluded pause intervals; verify background/restart/resume behavior without confusing duration with timed exercise sets.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/FEATURES.md"},{"Name":"Rest timer","ID":"F08","Workstream":"Workouts","Phase":"Core flows","Status":"Planned","Priority":"Medium","Start":"10/19/2026","End":"11/01/2026","Depends on":"R02, R03","Completion criteria":"Provide an adjustable start/pause/reset/skip countdown between sets; restore correctly after navigation/background/restart; completion cues respect permissions, coexist with workout reminders and never automatically log sets.","Source":"https://github.com/WaldenLee2005/project-orca-9/blob/main/FEATURES.md"}],"urls":{"R02":"https://app.notion.com/p/3f0b1348a34d813bacfbc90ee1f1eb36","R01":"https://app.notion.com/p/3f0b1348a34d81569e67e36fdb0d0a96","R03":"https://app.notion.com/p/3f0b1348a34d81208a01f2a0f5deb9a6","R04":"https://app.notion.com/p/3f0b1348a34d817594a7e6127a978f61","F07":"https://app.notion.com/p/3f0b1348a34d811b9e2ec36c67cb0009","F02":"https://app.notion.com/p/3f0b1348a34d81d99ff7c21bfc9b9ccb","F08":"https://app.notion.com/p/3f0b1348a34d81f1b5c6e6ff14346055","R06":"https://app.notion.com/p/3f0b1348a34d814693fecd3cc418c2d7","R05":"https://app.notion.com/p/3f0b1348a34d81dba914f785b3273029","R07":"https://app.notion.com/p/3f0b1348a34d811c856edf6a1aa365c9","F03":"https://app.notion.com/p/3f0b1348a34d8132b479d23ce7a7da19","R09":"https://app.notion.com/p/3f0b1348a34d8178bdf8de2b7967528b","R08":"https://app.notion.com/p/3f0b1348a34d8196ba99c2e3221ce01d","R10":"https://app.notion.com/p/3f0b1348a34d8150af21f7320f34dae3","R11":"https://app.notion.com/p/3f0b1348a34d81779f56d3841f5dd552","R15":"https://app.notion.com/p/3f0b1348a34d815c9232ce6597b15706","R12":"https://app.notion.com/p/3f0b1348a34d81bba7e4fdb2a1779dd2","R13":"https://app.notion.com/p/3f0b1348a34d81d8b27ae5a60f4d3054","R14":"https://app.notion.com/p/3f0b1348a34d81f19ecde7772f697806","R16":"https://app.notion.com/p/3f0b1348a34d816c8516f0c4c22f0985","R18":"https://app.notion.com/p/3f0b1348a34d8179b42ae15f03832506","R17":"https://app.notion.com/p/3f0b1348a34d818a8fd3ca52e57cf966","R20":"https://app.notion.com/p/3f0b1348a34d81c088c5d8f396f10cbf","R19":"https://app.notion.com/p/3f0b1348a34d81479d2ee24af293f125","R21":"https://app.notion.com/p/3f0b1348a34d810a8250cee4ae49e4b0","R22":"https://app.notion.com/p/3f0b1348a34d81579f27c3976d7e911b","R23":"https://app.notion.com/p/3f0b1348a34d81b2bbb1c3a4dd670f2a","F05":"https://app.notion.com/p/3f0b1348a34d818db9f4eac534bdd939","F06":"https://app.notion.com/p/3f0b1348a34d81c19739ecbf03c1a1a5","F01":"https://app.notion.com/p/3f0b1348a34d81da8218e59302cfae16","F04":"https://app.notion.com/p/3f0b1348a34d81e18c8fe05beb1ffcc3","L04":"https://app.notion.com/p/3f0b1348a34d8140888aee0865d6dc6e","L01":"https://app.notion.com/p/3f0b1348a34d8153ad63c2390c601c13","L02":"https://app.notion.com/p/3f0b1348a34d8191a433d49570ff4437","L03":"https://app.notion.com/p/3f0b1348a34d81fe8817e260f6550c12"}}</script>
+</div>
+<style>
+  #orca-launch-path-20261004 { color: var(--foreground); width: 100%; }
+  #orca-launch-path-20261004 h3 { margin-top: 0; margin-bottom: 12px; }
+  #orca-launch-path-20261004 .orca-graph { position: relative; width: 100%; }
+  #orca-launch-path-20261004 .orca-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  #orca-launch-path-20261004 .orca-nodes { position: relative; width: 100%; height: 100%; }
+  #orca-launch-path-20261004 .orca-node { position: absolute; color: var(--foreground); text-decoration: none; box-sizing: border-box; }
+  #orca-launch-path-20261004 .orca-node:hover .orca-label { text-decoration: underline; }
+  #orca-launch-path-20261004 .orca-label { font-weight: 500; display: block; }
+  #orca-launch-path-20261004 .orca-date { display: block; color: var(--muted-foreground); }
+  #orca-launch-path-20261004 .orca-stage { text-align: center; }
+  #orca-launch-path-20261004 .orca-stage .orca-date { margin-top: 25px; }
+  #orca-launch-path-20261004 .orca-row .orca-label,
+  #orca-launch-path-20261004 .orca-row .orca-date { max-width: 140px; }
+  #orca-launch-path-20261004 .orca-section,
+  #orca-launch-path-20261004 .orca-tick { position: absolute; color: var(--muted-foreground); }
+  #orca-launch-path-20261004 .orca-section { font-weight: 500; }
+  #orca-launch-path-20261004 .orca-tick { transform: translateX(-50%); white-space: nowrap; }
+  #orca-launch-path-20261004 .orca-tick.first { transform: none; }
+  #orca-launch-path-20261004 .orca-tick.last { transform: translateX(-100%); }
+  #orca-launch-path-20261004 .orca-mobile .orca-node { text-align: left; }
+  #orca-launch-path-20261004 .orca-mobile .orca-stage .orca-date { margin-top: 0; }
+  #orca-launch-path-20261004 .orca-mobile .orca-row .orca-label,
+  #orca-launch-path-20261004 .orca-mobile .orca-row .orca-date { max-width: none; }
+  #orca-launch-path-20261004 .orca-mobile .orca-label,
+  #orca-launch-path-20261004 .orca-mobile .orca-date { overflow-wrap: anywhere; }
+  #orca-launch-path-20261004 .orca-lines .structure { stroke: color-mix(in srgb, var(--foreground) 24%, transparent); stroke-width: 1.25; fill: none; }
+  #orca-launch-path-20261004 .orca-lines .grid { stroke: var(--border); stroke-width: 1; }
+  #orca-launch-path-20261004 .orca-lines .main-dot { fill: var(--foreground); }
+  #orca-launch-path-20261004 .orca-lines .feature-dot { fill: var(--viz-series-1); }
+  #orca-launch-path-20261004 .orca-lines .feature-range { fill: color-mix(in srgb, var(--viz-series-1) 24%, transparent); }
+  #orca-launch-path-20261004 .orca-lines .support-dot { fill: color-mix(in srgb, var(--foreground) 60%, transparent); }
+  #orca-launch-path-20261004 .orca-lines .support-range { fill: var(--muted); }
+  #orca-launch-path-20261004 .orca-lines .beta-dot { fill: var(--viz-series-2); }
+  #orca-launch-path-20261004 .orca-lines .beta-range { fill: color-mix(in srgb, var(--viz-series-2) 24%, transparent); }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('orca-launch-path-20261004');
+  const graph = root.querySelector('.orca-graph');
+  const svg = root.querySelector('.orca-lines');
+  const layer = root.querySelector('.orca-nodes');
+  const data = JSON.parse(document.getElementById('orca-launch-data-20261004').textContent);
+  const tasks = new Map(data.rows.map(row => [row.ID, row]));
+  const features = [
+    ['F02', 'Notes to self'], ['F07', 'Workout time'], ['F08', 'Rest timer'],
+    ['F03', 'Recaps'], ['F04', 'Music listened to'], ['F05', 'Supplements'],
+    ['F06', 'Offline + sync'], ['F01', 'Vacation mode'], ['L02', 'Friends feed']
+  ];
+  const stages = [
+    { id: 'R01', label: 'Scope', dates: 'Oct 5–7' },
+    { id: 'R02', label: 'Builds', dates: 'Oct 5–11' },
+    { id: 'R03', label: 'Core flows', dates: 'Oct 8–Nov 1', extra: ['R04', 'R05', 'R06'] },
+    { id: 'R16', label: 'Freeze', dates: 'Dec 6' },
+    { id: 'R18', label: 'Full beta', dates: 'Dec 7–20', note: 'Full-feature beta: December 7–20. Rolling core testing begins November 2.' },
+    { id: 'R21', label: 'Candidate', dates: 'Dec 21–Jan 3', extra: ['R22'] },
+    { id: 'R23', label: 'Launch', dates: 'Jan 4' }
+  ];
+  const support = [
+    { id: 'R13', label: 'Accounts', dates: 'Oct 12–25' },
+    { id: 'R07', label: 'Data contracts + safety', dates: 'Oct 26–Nov 8' },
+    { id: 'R11', label: 'Reviewed coach', dates: 'Nov 9–29', end: '11/29/2026', extra: ['R12'], note: 'Only reviewed, release-eligible coaching reaches testers.' }
+  ];
+  function date(text) {
+    const [month, day, year] = text.split('/').map(Number);
+    return new Date(Date.UTC(year, month - 1, day));
+  }
+  function shortDate(text) {
+    return date(text).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  }
+  function dateRange(row) {
+    return `${shortDate(row.Start)}–${shortDate(row.End)}`;
+  }
+  function details(descriptor) {
+    const row = tasks.get(descriptor.id);
+    const dependentNames = row['Depends on'].split(',').map(id => id.trim()).filter(Boolean).map(id => `${id}: ${tasks.get(id).Name}`).join('; ');
+    const extra = (descriptor.extra || []).map(id => {
+      const task = tasks.get(id);
+      return `${task.Name}: ${task['Completion criteria']}`;
+    }).join('\n');
+    return [row.Name, `${row.Start}–${row.End}`, descriptor.note || '', row['Completion criteria'], dependentNames ? `Completion gates: ${dependentNames}` : '', extra].filter(Boolean).join('\n');
+  }
+  function node(descriptor, className, x, y, width, height) {
+    const a = document.createElement('a');
+    a.className = `orca-node cursor-interaction text-small ${className}`;
+    a.href = data.urls[descriptor.id];
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.dataset.task = descriptor.id;
+    a.dataset.tooltip = details(descriptor);
+    a.setAttribute('aria-label', `${descriptor.label}, ${descriptor.dates || dateRange(tasks.get(descriptor.id))}. Open task in Notion.`);
+    Object.assign(a.style, { left: `${x}px`, top: `${y}px`, width: `${width}px`, minHeight: `${height}px` });
+    const graphWidth = graph.getBoundingClientRect().width;
+    const tooltipWidth = Math.min(400, graphWidth - 24);
+    const tooltipLeft = Math.max(12, Math.min(graphWidth - tooltipWidth - 12, x + (width - tooltipWidth) / 2));
+    a.style.setProperty('--orca-tooltip-left', `${tooltipLeft - x}px`);
+    a.style.setProperty('--orca-tooltip-width', `${tooltipWidth}px`);
+    const label = document.createElement('span');
+    label.className = 'orca-label';
+    label.textContent = descriptor.label;
+    const when = document.createElement('span');
+    when.className = 'orca-date tabular-nums';
+    when.textContent = descriptor.dates || dateRange(tasks.get(descriptor.id));
+    a.append(label, when);
+    layer.append(a);
+    return a;
+  }
+  function annotation(text, x, y, className = 'orca-section') {
+    const element = document.createElement('span');
+    element.className = `${className} text-small`;
+    element.textContent = text;
+    element.style.left = `${x}px`;
+    element.style.top = `${y}px`;
+    layer.append(element);
+    return element;
+  }
+  function shape(tag, attributes, className) {
+    const element = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value);
+    element.setAttribute('class', className);
+    svg.append(element);
+    return element;
+  }
+  const line = (x1, y1, x2, y2, className = 'structure') => shape('line', { x1, y1, x2, y2 }, className);
+  const dot = (x, y, kind = 'main', radius = 4) => shape('circle', { cx: x, cy: y, r: radius }, `${kind}-dot`);
+  const range = (x1, x2, y, kind) => {
+    shape('rect', { x: x1, y: y - 4, width: Math.max(6, x2 - x1), height: 8, rx: 4 }, `${kind}-range`);
+    dot(x1, y, kind);
+    dot(x2, y, kind, 3);
+  };
+  function desktop(width) {
+    const plotLeft = 154;
+    const plotRight = width - 24;
+    const first = date('10/05/2026').valueOf();
+    const last = date('01/04/2027').valueOf();
+    const x = text => plotLeft + (date(text).valueOf() - first) / (last - first) * (plotRight - plotLeft);
+    const freeze = x('12/06/2026');
+    const tail = plotRight - freeze;
+    const points = [31, 110, 210, freeze, freeze + tail * .34, freeze + tail * .69, plotRight];
+    const top = 37;
+    const labelWidths = [61, 72, 88, 52, 62, 58, 47];
+    line(points[0], top, points[6], top);
+    stages.forEach((stage, index) => {
+      dot(points[index], top, 'main', index === 3 || index === 6 ? 6 : 4);
+      node(stage, 'orca-stage', points[index] - labelWidths[index] / 2, 1, labelWidths[index], 73);
+    });
+    annotation('Nine launch features', 0, 98);
+    const axisY = 123;
+    line(plotLeft, axisY, plotRight, axisY, 'grid');
+    ['10/05/2026', '11/02/2026', '12/06/2026', '01/04/2027'].forEach((text, index) => {
+      const point = x(text);
+      line(point, axisY - 4, point, 545, 'grid');
+      annotation(shortDate(text), point, 99, `orca-tick ${index === 0 ? 'first' : index === 3 ? 'last' : ''}`);
+    });
+    const featureStart = 152;
+    const pitch = 48;
+    const featureEnd = featureStart + (features.length - 1) * pitch;
+    shape('path', { d: `M ${points[2]} ${top + 6} V 132 H ${plotLeft} V ${featureEnd}` }, 'structure');
+    line(freeze, top + 7, freeze, featureEnd);
+    features.forEach(([id, label], index) => {
+      const task = tasks.get(id);
+      const y = featureStart + index * pitch;
+      const begin = x(task.Start);
+      const end = x(task.End);
+      line(plotLeft, y, begin, y);
+      line(end, y, freeze, y);
+      range(begin, end, y, 'feature');
+      node({ id, label }, 'orca-row', 0, y - 18, width, 40);
+    });
+    const supportTop = featureEnd + 74;
+    annotation('Support work', 0, supportTop - 43);
+    support.forEach((entry, index) => {
+      const task = tasks.get(entry.id);
+      const y = supportTop + index * pitch;
+      range(x(task.Start), x(entry.end || task.End), y, 'support');
+      node(entry, 'orca-row', 0, y - 18, width, 44);
+    });
+    const packagingY = supportTop + 3 * pitch + 25;
+    const betaY = packagingY + pitch;
+    range(x('10/26/2026'), x('11/01/2026'), packagingY, 'support');
+    node({ id: 'R17', label: 'Beta builds', dates: 'Oct 26–Nov 1' }, 'orca-row', 0, packagingY - 18, width, 40);
+    range(x('11/02/2026'), x('12/20/2026'), betaY, 'beta');
+    node({ id: 'R18', label: 'Rolling beta', dates: 'Nov 2–Dec 20', note: 'Core testing begins November 2. All nine features join the full-feature beta December 7–20.' }, 'orca-row', 0, betaY - 18, width, 40);
+    const betaEnd = x('12/20/2026');
+    shape('path', { d: `M ${betaEnd} ${betaY - 4} V 82 H ${points[4]} V ${top + 7}` }, 'structure');
+    graph.style.height = `${betaY + 30}px`;
+    svg.setAttribute('viewBox', `0 0 ${width} ${betaY + 30}`);
+  }
+  function mobile(width) {
+    graph.classList.add('orca-mobile');
+    const mainX = 18;
+    const branchX = 42;
+    const betaX = width - 10;
+    let y = 20;
+    const step = 67;
+    const addStage = stage => {
+      dot(mainX, y + 11, 'main', stage.id === 'R16' || stage.id === 'R23' ? 6 : 4);
+      node(stage, 'orca-stage', 35, y - 6, width - 53, 51);
+      const point = y + 11;
+      y += step;
+      return point;
+    };
+    const start = addStage(stages[0]);
+    addStage(stages[1]);
+    addStage(stages[2]);
+    node({ id: 'R17', label: 'Beta builds', dates: 'Oct 26–Nov 1' }, 'orca-row', 55, y - 5, width - 79, 48);
+    dot(branchX, y + 11, 'support');
+    line(mainX, y + 11, branchX, y + 11);
+    y += 58;
+    const betaStart = y + 10;
+    node({ id: 'R18', label: 'Rolling beta', dates: 'Nov 2–Dec 20', note: 'Testing starts November 2. All nine features join the full-feature beta December 7–20.' }, 'orca-row', 55, y - 5, width - 79, 48);
+    dot(betaX, betaStart, 'beta', 5);
+    line(mainX, betaStart, branchX, betaStart);
+    y += 64;
+    annotation('Nine concurrent launch features', 55, y - 14);
+    y += 24;
+    const branchPoints = [];
+    features.forEach(([id, label]) => {
+      const point = y + 11;
+      line(mainX, point, branchX, point);
+      dot(branchX, point, 'feature', 4);
+      node({ id, label }, 'orca-row', 55, y - 5, width - 79, 48);
+      branchPoints.push(point);
+      y += 58;
+    });
+    y += 6;
+    annotation('Support work', 55, y - 14);
+    y += 24;
+    support.forEach(entry => {
+      const point = y + 11;
+      line(mainX, point, branchX, point);
+      dot(branchX, point, 'support', 4);
+      node(entry, 'orca-row', 55, y - 5, width - 79, 48);
+      y += 58;
+    });
+    y += 14;
+    const freeze = addStage(stages[3]);
+    const fullBeta = addStage(stages[4]);
+    const candidate = addStage(stages[5]);
+    const launch = addStage(stages[6]);
+    line(mainX, start + 5, mainX, launch - 6);
+    line(betaX, betaStart + 5, betaX, fullBeta);
+    line(betaX, fullBeta, mainX + 7, fullBeta);
+    branchPoints.forEach(point => line(branchX, point, branchX, Math.min(point + 17, freeze)));
+    graph.style.height = `${y - 5}px`;
+    svg.setAttribute('viewBox', `0 0 ${width} ${y - 5}`);
+  }
+  let lastWidth = 0;
+  function draw() {
+    const width = Math.round(graph.getBoundingClientRect().width);
+    if (!width || width === lastWidth) return;
+    lastWidth = width;
+    svg.replaceChildren();
+    layer.replaceChildren();
+    graph.classList.remove('orca-mobile');
+    if (width >= 720) desktop(width); else mobile(width);
+  }
+  new ResizeObserver(draw).observe(graph);
+  draw();
+})();
+</script>
+
+    <noscript>
+      <ol class="orca-static-path text-small">
+        <li><a href="https://app.notion.com/p/3f0b1348a34d81569e67e36fdb0d0a96" data-tooltip="Confirm v1 scope and acceptance checks
+10/05/2026–10/07/2026
+Agree all nine requested features for launch with measurable acceptance checks, supported platforms and tester needs; define data ownership and schema contracts for reconnect sync.
+Completion gates: None">Scope</a><span>October 5–7, 2026</span></li>
+        <li><a href="https://app.notion.com/p/3f0b1348a34d813bacfbc90ee1f1eb36" data-tooltip="Build native apps and test the baseline
+10/05/2026–10/11/2026
+Rebuilt iOS and Android apps open all tabs, log offline and reload saved data; record device/build evidence.
+Completion gates: R01">Native builds</a><span>October 5–11</span></li>
+        <li><a href="https://app.notion.com/p/3f0b1348a34d81208a01f2a0f5deb9a6" data-tooltip="Make logging fast and reliable in the gym
+10/08/2026–10/18/2026
+Phone testing confirms fast set entry, copy/add set, resume after close, empty-session exit, timed work and duplicate-save protection.
+Completion gates: R02">Core logging and history</a><span>October 8–November 1</span>
+          <ul>
+            <li><a href="https://app.notion.com/p/3f0b1348a34d81d99ff7c21bfc9b9ccb" data-tooltip="Notes to self
+10/19/2026–11/01/2026
+Add/edit/delete private workout notes, retain them through offline save/reload and history corrections on native/web, and keep them out of social publishing. Exercise-specific notes can extend the first scope.
+Completion gates: R04">Notes to self</a><span>October 19–November 1</span></li>
+            <li><a href="https://app.notion.com/p/3f0b1348a34d811b9e2ec36c67cb0009" data-tooltip="Workout time
+10/19/2026–11/01/2026
+Show elapsed session time and save duration in history/recaps; define whether pauses count and persist excluded pause intervals; verify background/restart/resume behavior without confusing duration with timed exercise sets.
+Completion gates: R03, R04">Workout time</a><span>October 19–November 1</span></li>
+            <li><a href="https://app.notion.com/p/3f0b1348a34d81f1b5c6e6ff14346055" data-tooltip="Rest timer
+10/19/2026–11/01/2026
+Provide an adjustable start/pause/reset/skip countdown between sets; restore correctly after navigation/background/restart; completion cues respect permissions, coexist with workout reminders and never automatically log sets.
+Completion gates: R02, R03">Rest timer</a><span>October 19–November 1</span></li>
+            <li><a href="https://app.notion.com/p/3f0b1348a34d8132b479d23ce7a7da19" data-tooltip="Recaps
+11/02/2026–11/15/2026
+Provide completion and weekly recaps from actual saved sessions: working sets, volume, workout time, PRs and consistency; handle empty/sparse data, timed work/rest days and refresh after corrections.
+Completion gates: R04, R05, F07">Recaps</a><span>November 2–15</span></li>
+            <li><a href="https://app.notion.com/p/3f0b1348a34d81e18c8fe05beb1ffcc3" data-tooltip="Music listened to
+11/02/2026–11/08/2026
+Manually attach a song/playlist name or link to a workout and show it in history; define provider choice and consent/permissions before separately adding automatic listening capture.
+Completion gates: R04">Music listened to</a><span>November 2–8</span></li>
+            <li><a href="https://app.notion.com/p/3f0b1348a34d818db9f4eac534bdd939" data-tooltip="Supplements
+11/09/2026–11/15/2026
+Privately record a supplement name, optional amount/unit/time and notes; edit/delete and offline reload work; recap inclusion is optional.
+Completion gates: F02">Supplements</a><span>November 9–15</span></li>
+            <li><a href="https://app.notion.com/p/3f0b1348a34d81c19739ecbf03c1a1a5" data-tooltip="Offline mode with reconnect sync
+11/09/2026–11/29/2026
+Keep logging offline; account-owned pending changes, including agreed notes, music, supplement, duration and vacation records, survive restart and sync on reconnect with deduplicated retries, conflict/error visibility, edits/deletions and account isolation; guest data stays local until explicitly associated and derived feed events respect private-sharing boundaries.
+Completion gates: R07, R13, F01, F02, F04, F05, F07, F08">Offline + reconnect sync</a><span>November 9–29</span></li>
+            <li><a href="https://app.notion.com/p/3f0b1348a34d81da8218e59302cfae16" data-tooltip="Vacation mode
+11/16/2026–11/29/2026
+Choose travel dates and available equipment; generate a reviewed editable temporary routine using suitable catalog exercises; preserve the home program/history and explicitly restore the regular schedule.
+Completion gates: R07, R08, R11">Vacation mode</a><span>November 16–29</span></li>
+            <li><a href="https://app.notion.com/p/3f0b1348a34d8191a433d49570ff4437" data-tooltip="Feed
+11/16/2026–11/29/2026
+Build opt-in compact workout/PR sharing with friend controls and tested audience permissions; retries create no duplicate events, deletion/unsharing removes visibility, and private notes/full raw logs stay private.
+Completion gates: R13, F06">Friends feed</a><span>November 16–29</span></li>
+            <li><a href="https://app.notion.com/p/3f0b1348a34d81d8b27ae5a60f4d3054" data-tooltip="Finish optional accounts and onboarding
+10/12/2026–10/25/2026
+Confirm hosted setup, security policies and account ownership/schema contracts for sync/feed by October 25; device-verify signup/confirmation/signin/recovery, avatar/privacy, account deletion and profile/avatar cleanup with explicit local-training-data handling; guest/offline/error flows work.
+Completion gates: R02">Accounts</a><span>October 12–25</span></li>
+            <li><a href="https://app.notion.com/p/3f0b1348a34d811c856edf6a1aa365c9" data-tooltip="Verify upgrades and training data safety
+10/26/2026–11/08/2026
+Upgrades preserve existing workouts/programs/auth; verify migration and data contracts for planned notes, music, supplement, vacation and timer fields before cloud sync; failure/retry and reload checks pass on native and web; no new training reset.
+Completion gates: R04, R05, F02, F07, F08">Data contracts and safety</a><span>October 26–November 8</span></li>
+            <li><a href="https://app.notion.com/p/3f0b1348a34d81779f56d3841f5dd552" data-tooltip="Review coaching policy and define shipped scope
+11/09/2026–11/22/2026
+Qualified review covers thresholds and explanations; decide durable decision history, opt-in behavior and release eligibility for today-only suggestions.
+Completion gates: R03, R07">Reviewed coaching</a><span>November 9–29</span></li>
+            <li><a href="https://app.notion.com/p/3f0b1348a34d818a8fd3ca52e57cf966" data-tooltip="Prepare private beta builds and feedback
+10/26/2026–11/01/2026
+Package installable early core beta builds for selected testers; capture device, build, reproduction and severity; publish incremental builds as features are ready.
+Completion gates: R03, R04">Early beta builds</a><span>October 26–November 1</span></li>
+            <li><a href="https://app.notion.com/p/3f0b1348a34d8179b42ae15f03832506" data-tooltip="Run rolling real gym beta sessions
+11/02/2026–12/20/2026
+Test core flows from November 2, add each ready feature, and cover all nine requested features in full-feature beta December 7–20; coaching reaches testers only in reviewed eligible scope; record actual gym, offline/reconnect, restart/resume and program/rest findings.
+Completion gates: R17">Rolling gym beta</a><span>November 2–December 20</span></li>
+          </ul>
+        </li>
+        <li><a href="https://app.notion.com/p/3f0b1348a34d816c8516f0c4c22f0985" data-tooltip="Freeze the v1 feature set
+12/01/2026–12/06/2026
+Target implementation of all nine requested features by November 29; all agreed v1 features meet acceptance checks by December 6 with release gates explicit; only release fixes enter the candidate.
+Completion gates: R05, R06, R07, R08, R09, R10, R12, R13, R14, R15, F01, F02, F03, F04, F05, F06, F07, F08, L02">Integration and acceptance freeze</a><span>December 6</span></li>
+        <li><a href="https://app.notion.com/p/3f0b1348a34d8179b42ae15f03832506" data-tooltip="Run rolling real gym beta sessions
+11/02/2026–12/20/2026
+Test core flows from November 2, add each ready feature, and cover all nine requested features in full-feature beta December 7–20; coaching reaches testers only in reviewed eligible scope; record actual gym, offline/reconnect, restart/resume and program/rest findings.
+Completion gates: R17">Full-feature beta</a><span>December 7–20</span></li>
+        <li><a href="https://app.notion.com/p/3f0b1348a34d810a8250cee4ae49e4b0" data-tooltip="Approve release candidate and submit
+12/21/2026–12/27/2026
+Candidate passes feature/data/device gates; choose rollout and confirm store submission/approval status for each platform.
+Completion gates: R19, R20">Release candidate and review buffer</a><span>December 21–January 3</span></li>
+        <li><a href="https://app.notion.com/p/3f0b1348a34d81b2bbb1c3a4dd670f2a" data-tooltip="Release v1 when all gates pass
+01/04/2027–01/04/2027
+Launch only after required reviews, store approvals and verification; record release version and support/issue follow-up.
+Completion gates: R22">Launch</a><span>January 4, 2027</span></li>
+      </ol>
+    </noscript>
+  </main>
+  <div class="orca-native-tooltip text-small" role="tooltip" hidden>
+    <p></p><a target="_blank" rel="noopener noreferrer">Open task in Notion</a>
+  </div>
+  <script>
+  (() => {
+    const root = document.getElementById('orca-launch-path-20261004');
+    const popup = document.querySelector('.orca-native-tooltip');
+    const copy = popup.querySelector('p');
+    const action = popup.querySelector('a');
+    let current = null;
+    let pinned = false;
+    let dismissTimer;
+    function hide() { popup.hidden = true; current = null; pinned = false; }
+    function show(anchor, pin = false) {
+      clearTimeout(dismissTimer);
+      current = anchor;
+      pinned = pin;
+      copy.textContent = anchor.dataset.tooltip;
+      action.href = anchor.href;
+      popup.hidden = false;
+      const bounds = anchor.getBoundingClientRect();
+      const available = document.documentElement.clientWidth;
+      const width = Math.min(400, available - 24);
+      popup.style.width = `${width}px`;
+      popup.style.left = `${Math.max(12, Math.min(available - width - 12, bounds.left + (bounds.width - width) / 2)) + window.scrollX}px`;
+      popup.style.top = `${bounds.bottom + window.scrollY + 4}px`;
+    }
+    root.addEventListener('pointerover', event => {
+      const anchor = event.target.closest('a[data-tooltip]');
+      if (anchor && !pinned && event.pointerType !== 'touch') show(anchor);
+    });
+    root.addEventListener('pointerout', event => {
+      if (!pinned && !popup.contains(event.relatedTarget)) dismissTimer = setTimeout(hide, 160);
+    });
+    root.addEventListener('focusin', event => {
+      const anchor = event.target.closest('a[data-tooltip]');
+      if (anchor) show(anchor);
+    });
+    root.addEventListener('click', event => {
+      const anchor = event.target.closest('a[data-tooltip]');
+      if (!anchor) return;
+      if (window.matchMedia('(pointer: coarse)').matches && (!pinned || current !== anchor)) {
+        event.preventDefault();
+        show(anchor, true);
+      }
+    });
+    popup.addEventListener('pointerenter', () => clearTimeout(dismissTimer));
+    popup.addEventListener('pointerleave', () => { if (!pinned) dismissTimer = setTimeout(hide, 160); });
+    document.addEventListener('pointerdown', event => { if (pinned && !popup.contains(event.target) && !root.contains(event.target)) hide(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') hide(); });
+    document.addEventListener('focusin', event => { if (!root.contains(event.target) && !popup.contains(event.target)) hide(); });
+    document.body.dataset.tooltipsReady = 'true';
+  })();
+  </script>
+</body>
+</html>

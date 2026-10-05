@@ -11,7 +11,7 @@ Recommended baseline:
 - TypeScript
 - Expo Router for navigation
 - Local-first storage for the MVP
-- Later managed backend with Supabase for auth, friends, feed events, and optional sync
+- Supabase auth/profile foundation implemented; friends/feed and optional account-owned reconnect sync planned for v1
 
 ## Visual System
 
@@ -293,11 +293,15 @@ Likely options:
 
 - AsyncStorage only for small preferences and onboarding flags.
 
+Planned for the January 4, 2027 release:
+
+- Finish hosted/account readiness, friends/feed publishing and optional account-owned reconnect sync. Define ownership, queue/retry/conflict rules and the new metadata contracts before implementation; these capabilities are not yet verified or shipped.
+- Preserve guest offline logging and local persistence. Sharing compact feed events requires explicit opt-in; private notes and raw logs are not social content.
+
 Later:
 
-- Add Supabase for account creation, friend graph, feed events, and optional cloud sync.
-- Add backup/restore.
-- Add cross-device continuity.
+- Optional export/backup/restore beyond reconnect sync.
+- Further cross-device continuity.
 
 ## Backend Strategy
 

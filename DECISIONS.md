@@ -222,3 +222,9 @@ Reason:
 - Expo SQLite can stall during browser initialization in the current dev build.
 - The workout loop still needs to be testable on web without pending storage operations.
 - Native remains the production persistence target for normalized workout/session/set tables.
+
+## 2026-10-04: Include All Requested Features And Start Beta Early
+
+Decision: Plan the January 4, 2027 first release with vacation routines from available equipment, private notes, recaps, a friends feed, music metadata, supplements, offline reconnect sync, workout time and a rest timer. Core-flow beta starts November 2 while feature work continues; the nine additions target implementation completion November 29, acceptance/freeze December 6 and full-feature beta December 7–20. These are planning targets, with device, coaching-review and store gates still required.
+
+Reason: The user wants all nine at launch and permits beta before the complete feature set is ready. Move account/hosted readiness earlier for sync/feed and add features to beta only as their checks pass. Music starts with manual song/playlist metadata; vacation uses reviewed catalog-based temporary routines. External integrations and hosted AI remain later work. Use a branching interactive chart in the Notion hub, with hover details and links to the underlying task pages.

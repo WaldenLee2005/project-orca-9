@@ -1,8 +1,12 @@
 # Notion setup for Orca
 
-The private [Orca Project Hub](https://app.notion.com/p/3f0b1348a34d812c832ace7baa9d4b75) and [Orca Roadmap](https://app.notion.com/p/c8cffe9817e34c3fb723ec417fc126ab) are created in Notion. The roadmap has 27 dated release tasks and eight later backlog items, targeting a January 4, 2027 first release with a December 6 feature freeze.
+The private [Orca Project Hub](https://app.notion.com/p/3f0b1348a34d812c832ace7baa9d4b75) and [Orca Roadmap](https://app.notion.com/p/c8cffe9817e34c3fb723ec417fc126ab) are created in Notion. The roadmap has 32 dated release tasks and three later backlog items. All nine requested features are planned for the January 4, 2027 launch. Core-flow beta starts November 2, the additions target implementation completion November 29, feature acceptance/freeze ends December 6, and full-feature beta runs December 7–20.
 
 ## Use the live project space
+
+The hub opens with a branching roadmap chart. Hover or focus nodes to read dates, completion checks and prerequisites; open a node's Notion task for its editable record. Release details and the original tables are collapsed underneath. The chart is a dated snapshot and is refreshed manually when the plan changes.
+
+`Orca Roadmap.html` is the self-contained backup of the chart embedded in Notion. Open it in a browser to use its interactions. It requires no external service. The Markdown import below restores the written hub; its relative chart link points to this companion file, while the live Notion chart is an HTML attachment embed.
 
 Open the roadmap and select **Release timeline**, **By status**, **All work**, **Later** or **Requested features**. The last view isolates the nine requested additions, including the existing Feed task. The hub also contains an inline timeline. Open a task to review its completion criteria, linked prerequisites and project reference, then update Status and dates as work progresses. Owner is available for assignment.
 
@@ -42,8 +46,8 @@ Import once. Reimporting or merging CSV appends rows and can create duplicates. 
 
 1. Click **+** beside the database view name, choose **Timeline**, and name it **Release timeline**.
 2. Open database settings → **Layout → Show timeline by**. Enable separate start/end properties and select **Start** and **End**.
-3. Set the scale to weeks or months (Year gives a broad overview in the live space). Filter to **Start is not empty** and show Name, Status and Workstream on cards. This displays the 27 dated release tasks.
-4. Add a **Board** view named **By status**, grouped by Status, and a **Table** view named **All work**, sorted by Start. Add a **Later** view filtered to Phase = Later for the eight undated backlog items. A **Requested features** table can filter ID starts with F OR ID equals L02.
+3. Set the scale to weeks or months (Year gives a broad overview in the live space). Filter to **Start is not empty** and show Name, Status and Workstream on cards. This displays the 32 dated release tasks.
+4. Add a **Board** view named **By status**, grouped by Status, and a **Table** view named **All work**, sorted by Start. Add a **Later** view filtered to Phase = Later for the three undated backlog items. A **Requested features** table can filter ID starts with F OR ID equals L02.
 
 Timeline configuration is separate from CSV import. Check that the feature freeze ends December 6, 2026 and the launch target is January 4, 2027. [Timelines](https://www.notion.com/help/timelines), [views, filters and sorting](https://www.notion.com/help/views-filters-and-sorts)
 
@@ -57,7 +61,7 @@ Open a task to read its completion criteria and source. Assign yourself through 
 
 ## Verify the imported result
 
-- 35 task pages: R01–R23, L01–L04 and F01–F08. F02/F03/F07/F08 are scheduled additions; L02 is the existing Feed task.
+- 35 task pages: R01–R23, L01–L04 and F01–F08. All F01–F08 and the existing Feed task L02 have dates and Planned status; 32 scheduled tasks and three later items total.
 - Name is the title; Start and End are dates.
 - Later tasks have blank dates and appear in the Later view.
 - The timeline spans October 5, 2026 through January 4, 2027.

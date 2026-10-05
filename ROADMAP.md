@@ -2,42 +2,49 @@
 
 ## First release target
 
-Planning snapshot: October 4, 2026. The user requested a feature-complete first release in three months. Target **January 4, 2027**, with a **December 6, 2026 feature freeze** and December reserved for real-gym beta testing and release fixes. Dates are proposed targets, dependent on regular development, native build/device access, qualified coaching policy review and store approval.
+Planning snapshot: October 4, 2026. The user requested a feature-complete first release in three months, including all nine requested additions. Target **January 4, 2027**. **Core-flow beta starts November 2, 2026** while development continues. The nine additions target implementation completion by **November 29**, acceptance and feature freeze by **December 6**, and full-feature beta runs **December 7–20**. Dates are planning targets, dependent on development capacity, native build/device access, qualified coaching policy review and store approval.
 
-Proposed v1 scope: fast individual-set logging, full completed-session history/details/correction, private workout notes, completion/weekly recaps, elapsed workout time, a rest timer, exercise shortcuts, programs/adherence, rest-aware streaks, charts, device-verified reminders and reviewed text/screenshot import, optional accounts, narrowly scoped local coaching, accessibility and release preparation. Keep vacation routines, full social/feed, music/supplement tracking, health/nutrition, cloud sync, hosted AI and permanent automatic program adaptation for later releases under this proposed plan.
+Agreed v1 scope: fast individual-set logging, full completed-session history/details/correction, vacation routines generated from available equipment, private workout notes, completion/weekly recaps, a friends feed, music metadata, supplement logging, offline logging with reconnect sync, elapsed workout time, a rest timer, exercise shortcuts, programs/adherence, rest-aware streaks, charts, device-verified reminders and reviewed text/screenshot import, optional accounts, narrowly scoped local coaching, accessibility and release preparation. External health/nutrition integrations, automatic music-provider capture, hosted AI and permanent automatic program adaptation remain later work.
 
 | Dates | Focus | Exit gate |
 | --- | --- | --- |
 | Oct 5–11 | Scope and installed iOS/Android baseline | Agreed acceptance checks and native builds |
 | Oct 8–Nov 1 | Logging speed, summaries, full history and correction | Reliable actual-set review/reuse and derived-data refresh |
+| Oct 12–25 | Accounts and hosted foundation | Guest/account flows and ownership/security contracts ready for feed and sync |
+| Oct 26–Nov 1 | Package the first private beta | Installable core build and feedback channel ready |
 | Oct 26–Nov 15 | Upgrade safety, adherence, native reminders/import | Preserved existing data and recorded device evidence |
-| Nov 9–29 | Reviewed today-only coach and optional accounts | Qualified policy review, defined decision-history scope and reliable guest/account flows |
-| Nov 16–Dec 6 | Accessibility, metrics and integration | Agreed v1 acceptance checks pass; feature freeze |
-| Dec 7–20 | Real-gym beta, fixes and store materials | No unresolved release-blocking defects |
+| Nov 2–Dec 20 | Rolling real-gym beta and fixes | Test the core first; add each ready feature to subsequent builds |
+| Nov 2–29 | Recaps, music, supplements, vacation, feed, sync and reviewed coach | Nine requested additions implemented and available for beta by Nov 29 |
+| Nov 16–Dec 6 | Accessibility, metrics and integration | All v1 acceptance checks pass; freeze Dec 6 |
+| Dec 7–20 | Full-feature beta, regression and store materials | All nine additions tested together; no unresolved release-blocking defects |
 | Dec 21–Jan 3 | Candidate, store review and buffer | Candidate verification and required approvals |
 | Jan 4 | Target first release | All release gates pass |
 
-The private [Notion project hub](https://app.notion.com/p/3f0b1348a34d812c832ace7baa9d4b75) and [roadmap database](https://app.notion.com/p/c8cffe9817e34c3fb723ec417fc126ab) contain 27 scheduled tasks and eight later backlog items, with timeline, board, table, later-work and requested-features views. [Hub snapshot](docs/notion/Orca%20Project%20Hub.md), [roadmap CSV](docs/notion/Orca%20Roadmap.csv) and [setup guide](docs/notion/README.md) are retained in the repository. Dependencies are completion/release gates; preparation can overlap. Status/date upkeep is manual, with no automatic GitHub sync.
+The private [Notion project hub](https://app.notion.com/p/3f0b1348a34d812c832ace7baa9d4b75) and [roadmap database](https://app.notion.com/p/c8cffe9817e34c3fb723ec417fc126ab) contain 32 scheduled tasks and three later backlog items, with timeline, board, table, later-work and requested-features views. [Hub snapshot](docs/notion/Orca%20Project%20Hub.md), [roadmap CSV](docs/notion/Orca%20Roadmap.csv) and [setup guide](docs/notion/README.md) are retained in the repository. Dependencies are completion/release gates; preparation can overlap. Status/date upkeep is manual, with no automatic GitHub sync.
+
+The hub leads with a branching chart of the main release path and concurrent features, with node details and task links. Its [interactive chart backup](docs/notion/Orca%20Roadmap.html) uses the same dated snapshot; refresh it when dates or scope change.
 
 Current code includes charts, individual-set logging, weekly consistency and avatar upload. The detailed phase notes below distinguish implemented work from remaining release checks; older architecture/model descriptions may lag the current schema-8 coach prototype. Refer to the feature implementation and `apps/mobile/README.md` before changing behavior.
 
 ## Requested features
 
-The user added these nine features on October 4. Proposed placement retains the January 4 target with four smaller additions in v1. Larger work has no committed dates. Reassess capacity at the weekly review.
+The user added these nine features on October 4 and confirmed all nine for launch, with beta starting before they are all finished. Dates below are in **2026**. “Ready for beta” means implemented and checked for inclusion in a beta build; final acceptance includes the December integration and device checks.
 
-| Feature | Task | Proposed placement | Completion scope |
-| --- | --- | --- | --- |
-| Vacation mode | F01 | Later | Reviewed travel routine generated from available equipment; preserve/restore the regular plan. |
-| Notes to self | F02 | Oct 19–Nov 1 | Private workout notes, offline save/reload and history review; exercise-specific notes can follow. |
-| Recaps | F03 | Nov 2–15 | Completion and weekly summaries using actual sessions, working sets, volume, time, PRs and consistency. |
-| Feed | L02 | Later | Opt-in friend-visible workout/PR summaries, tested audience permissions and unsharing/deletion. |
-| Music listened to | F04 | Later | Song/playlist metadata in workout history; manual entry first, automatic capture after provider choice. |
-| Supplements | F05 | Later | Private user-entered name, optional amount/unit/time and notes with editing and deletion. |
-| Offline mode with reconnect sync | F06 | Later | Durable account-owned queue, reconnect/retry deduplication, conflicts and offline edits/deletions. |
-| Workout time | F07 | Oct 19–Nov 1 | Elapsed session time, explicit pause rules and persistent duration in history/recaps. |
-| Rest timer | F08 | Oct 19–Nov 1 | Adjustable between-set countdown, background/resume persistence and permitted completion cues. |
+| Feature | Task | Start | Ready for beta | Completion scope |
+| --- | --- | --- | --- | --- |
+| Vacation mode | F01 | Nov 16 | Nov 29 | Reviewed travel routine generated from available equipment; preserve/restore the regular plan. |
+| Notes to self | F02 | Oct 19 | Nov 1 | Private workout notes, offline save/reload and history review; exercise-specific notes can follow. |
+| Recaps | F03 | Nov 2 | Nov 15 | Completion and weekly summaries using actual sessions, working sets, volume, time, PRs and consistency. |
+| Feed | L02 | Nov 16 | Nov 29 | Opt-in friend-visible workout/PR summaries, tested audience permissions and unsharing/deletion. |
+| Music listened to | F04 | Nov 2 | Nov 8 | Manually record song/playlist names or links in workout history. |
+| Supplements | F05 | Nov 9 | Nov 15 | Private user-entered name, optional amount/unit/time and notes with editing and deletion. |
+| Offline mode with reconnect sync | F06 | Nov 9 | Nov 29 | Durable account-owned queue, reconnect/retry deduplication, conflicts and offline edits/deletions. |
+| Workout time | F07 | Oct 19 | Nov 1 | Elapsed session time, explicit pause rules and persistent duration in history/recaps. |
+| Rest timer | F08 | Oct 19 | Nov 1 | Adjustable between-set countdown, background/resume persistence and permitted completion cues. |
 
-Offline local logging already exists; reconnect/cloud sync does not. Session timestamps are only a foundation for workout time, and current timed-set totals are not session duration. The native notes column and seven-day coach review are foundations rather than completed notes/recap products. Feed extends the existing L02 task. L01 now covers backup/restore separately from F06 sync. Data safety, reminder/device checks, accessibility, metrics and feature-freeze gates include the four new v1 additions.
+Offline local logging already exists; reconnect/cloud sync does not. Session timestamps are only a foundation for workout time, and current timed-set totals are not session duration. The native notes column and seven-day coach review are foundations rather than completed notes/recap products. Feed extends the existing L02 task. L01 covers optional export/restore separately from F06 sync.
+
+Lock sync ownership, queued-write/conflict rules and the notes/music/supplement/duration/vacation data contracts during R01/R13/R07, before sync implementation starts November 9. Sync, feed, vacation and coaching overlap in late November; review capacity weekly and retain December integration time for account switching/deletion, offline corrections and sharing privacy. Early beta includes only ready, checked flows; reviewed coach, OCR, reminders, feed and sync join when eligible. Final accessibility, data/device regression, privacy materials and the freeze cover all nine additions.
 
 ## Phase 0: Product Context
 
@@ -287,7 +294,7 @@ Remaining:
 - Feed UI.
 - PR/session-summary publishing from local SQLite.
 
-Full friends/feed publishing remains after v1. The existing auth/profile foundation is included in the first-release readiness checks.
+Friends/feed publishing is now in v1 as L02, targeted November 16–29. Account readiness moves to October 12–25; feed audience policies and retry-safe publishing are required before its beta build.
 
 ## Phase 10: Nutrition Integrations
 
