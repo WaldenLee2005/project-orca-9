@@ -4,7 +4,7 @@
 
 Planning snapshot: October 4, 2026. The user requested a feature-complete first release in three months. Target **January 4, 2027**, with a **December 6, 2026 feature freeze** and December reserved for real-gym beta testing and release fixes. Dates are proposed targets, dependent on regular development, native build/device access, qualified coaching policy review and store approval.
 
-Proposed v1 scope: fast individual-set logging, full completed-session history/details/correction, exercise shortcuts, programs/adherence, rest-aware streaks, charts, device-verified reminders and reviewed text/screenshot import, optional accounts, narrowly scoped local coaching, accessibility and release preparation. Keep full social/feed, health/nutrition, cloud sync, hosted AI and permanent automatic program adaptation for later releases.
+Proposed v1 scope: fast individual-set logging, full completed-session history/details/correction, private workout notes, completion/weekly recaps, elapsed workout time, a rest timer, exercise shortcuts, programs/adherence, rest-aware streaks, charts, device-verified reminders and reviewed text/screenshot import, optional accounts, narrowly scoped local coaching, accessibility and release preparation. Keep vacation routines, full social/feed, music/supplement tracking, health/nutrition, cloud sync, hosted AI and permanent automatic program adaptation for later releases under this proposed plan.
 
 | Dates | Focus | Exit gate |
 | --- | --- | --- |
@@ -17,9 +17,27 @@ Proposed v1 scope: fast individual-set logging, full completed-session history/d
 | Dec 21–Jan 3 | Candidate, store review and buffer | Candidate verification and required approvals |
 | Jan 4 | Target first release | All release gates pass |
 
-The private [Notion project hub](https://app.notion.com/p/3f0b1348a34d812c832ace7baa9d4b75) and [roadmap database](https://app.notion.com/p/c8cffe9817e34c3fb723ec417fc126ab) contain 23 scheduled tasks and four later backlog items, with timeline, board, table and later-work views. [Hub snapshot](docs/notion/Orca%20Project%20Hub.md), [roadmap CSV](docs/notion/Orca%20Roadmap.csv) and [setup guide](docs/notion/README.md) are retained in the repository. Dependencies are completion/release gates; preparation can overlap. Status/date upkeep is manual, with no automatic GitHub sync.
+The private [Notion project hub](https://app.notion.com/p/3f0b1348a34d812c832ace7baa9d4b75) and [roadmap database](https://app.notion.com/p/c8cffe9817e34c3fb723ec417fc126ab) contain 27 scheduled tasks and eight later backlog items, with timeline, board, table, later-work and requested-features views. [Hub snapshot](docs/notion/Orca%20Project%20Hub.md), [roadmap CSV](docs/notion/Orca%20Roadmap.csv) and [setup guide](docs/notion/README.md) are retained in the repository. Dependencies are completion/release gates; preparation can overlap. Status/date upkeep is manual, with no automatic GitHub sync.
 
 Current code includes charts, individual-set logging, weekly consistency and avatar upload. The detailed phase notes below distinguish implemented work from remaining release checks; older architecture/model descriptions may lag the current schema-8 coach prototype. Refer to the feature implementation and `apps/mobile/README.md` before changing behavior.
+
+## Requested features
+
+The user added these nine features on October 4. Proposed placement retains the January 4 target with four smaller additions in v1. Larger work has no committed dates. Reassess capacity at the weekly review.
+
+| Feature | Task | Proposed placement | Completion scope |
+| --- | --- | --- | --- |
+| Vacation mode | F01 | Later | Reviewed travel routine generated from available equipment; preserve/restore the regular plan. |
+| Notes to self | F02 | Oct 19–Nov 1 | Private workout notes, offline save/reload and history review; exercise-specific notes can follow. |
+| Recaps | F03 | Nov 2–15 | Completion and weekly summaries using actual sessions, working sets, volume, time, PRs and consistency. |
+| Feed | L02 | Later | Opt-in friend-visible workout/PR summaries, tested audience permissions and unsharing/deletion. |
+| Music listened to | F04 | Later | Song/playlist metadata in workout history; manual entry first, automatic capture after provider choice. |
+| Supplements | F05 | Later | Private user-entered name, optional amount/unit/time and notes with editing and deletion. |
+| Offline mode with reconnect sync | F06 | Later | Durable account-owned queue, reconnect/retry deduplication, conflicts and offline edits/deletions. |
+| Workout time | F07 | Oct 19–Nov 1 | Elapsed session time, explicit pause rules and persistent duration in history/recaps. |
+| Rest timer | F08 | Oct 19–Nov 1 | Adjustable between-set countdown, background/resume persistence and permitted completion cues. |
+
+Offline local logging already exists; reconnect/cloud sync does not. Session timestamps are only a foundation for workout time, and current timed-set totals are not session duration. The native notes column and seven-day coach review are foundations rather than completed notes/recap products. Feed extends the existing L02 task. L01 now covers backup/restore separately from F06 sync. Data safety, reminder/device checks, accessibility, metrics and feature-freeze gates include the four new v1 additions.
 
 ## Phase 0: Product Context
 
@@ -92,6 +110,7 @@ Deliverables:
 - Complete workout.
 - Save completed sessions for progress/history.
 - Workout summary.
+- Private notes, elapsed workout time and a rest timer.
 
 Status: Core logging implemented; summary, previous-value reuse and gym usability remain.
 
@@ -112,6 +131,7 @@ Remaining:
 - Workout summary.
 - Repeat previous values quickly.
 - Verify fast entry and edge cases on phones.
+- Private workout notes plus persistent workout/rest timers, tracked as F02/F07/F08.
 
 ## Phase 4: Local Workout History
 
@@ -216,6 +236,7 @@ Remaining:
 
 - Verify metrics and refresh after completed-history corrections, including timed and warm-up handling.
 - Program adherence-history presentation is tracked under Phase 5.
+- Completion and weekly recaps from actual saved sessions, tracked as F03.
 
 ## Phase 8: Health and Fitness Integrations
 

@@ -59,6 +59,10 @@ Deferred:
 - AI-generated workout plans.
 - Trainer/client management.
 
+## Requested next capabilities
+
+The roadmap now includes vacation routines generated from available equipment, private notes, workout/weekly recaps, a friends feed, music metadata, supplement logging, offline logging with reconnect sync, elapsed workout time and a rest timer. The proposed January 4, 2027 release adds notes, recaps and the two timers; the larger additions remain later work. See `ROADMAP.md` and `FEATURES.md` for scope and acceptance checks. Reconnect sync is new work; offline local logging already functions.
+
 ## Onboarding
 
 Keep onboarding flexible for now. The current assumed flow:

@@ -1,5 +1,23 @@
 # Feature Inventory
 
+## Requested roadmap additions
+
+Requested October 4, 2026. These are planned capabilities, not implemented features. Release placement, dates and dependencies live in `ROADMAP.md` and the Notion roadmap.
+
+| Feature | Planned behavior | Completion checks |
+| --- | --- | --- |
+| Vacation mode | Generate a temporary routine from the equipment available while traveling. Review and edit before using it, then return to the regular program. | Match available equipment, keep targets editable, preserve the original program and history, and restore the normal schedule without rewriting past rest days. |
+| Notes to self | Save private workout notes and review them later; exercise-specific notes can extend the initial scope. | Add/edit/delete notes, retain them offline after reload on native/web, and display them in workout history without sharing them to the feed. |
+| Recaps | Show a completion recap and weekly training summary from actual saved work. | Correct exercise/set/volume/time totals, PRs and consistency; respect timed work, rest days and history corrections without inventing results. |
+| Feed | Share opted-in workout and PR summaries with friends. | Private-by-default publishing, friendship/privacy checks, deletion/unsharing, and no automatic exposure of full workout logs or private notes. |
+| Music listened to | Remember the tracks or playlists associated with a workout. | Choose manual entry first or a provider connection, retain metadata in history, and define consent/permissions before automatic capture. |
+| Supplements | Keep a private log of supplements the user records. | User-entered product, amount/unit and time with edit/delete, offline persistence and recap inclusion only when chosen. |
+| Offline mode with reconnect sync | Continue logging offline and sync account-owned data after connectivity returns. | Durable pending changes, idempotent retries, account isolation, visible sync/conflict state, and edits/deletions surviving reconnect without duplication or data loss. Guest logging stays local. |
+| Workout time | Show elapsed workout time and save duration with completed sessions. | Explicit pause/resume rules, correct background/restart handling, and duration in history/recaps. Elapsed workout time stays separate from timed exercise sets. |
+| Rest timer | Run an adjustable countdown between sets. | Start/pause/skip/reset, correct background/resume behavior, and completion alerts that respect permissions and do not interfere with workout reminders. |
+
+Existing foundations: local offline workout storage, session start/completion timestamps, a database-level session notes field, a seven-day coach summary and Supabase auth/profile code. They do not establish a notes editor, weekly recap product, workout/rest timers, music/supplement tracking, vacation generator, feed or training-data sync.
+
 ## MVP Features
 
 ### Visual design
@@ -66,9 +84,9 @@ Current capabilities:
 - Choose catalog exercises from the selector.
 - Add custom exercises by name.
 - Save the active session, logged exercises, and set rows locally with SQLite.
-- Set weight with a horizontal ruler control.
-- Set reps with a horizontal ruler control.
-- Set number of sets with a horizontal ruler control.
+- Record actual weight, reps or duration separately for each set with numeric fields/steppers.
+- Add/copy/remove individual sets.
+- Optionally record effort and warm-up status for each set.
 - Save an exercise to the active session log.
 - Save the active session as a completed workout for future history/progress charts.
 - Show recent previous sessions below Start Session with exercise count, set count, and total volume.
@@ -80,7 +98,7 @@ Expected capabilities:
 
 - Repeat previous values quickly.
 - View workout summary.
-- Support per-set history if needed.
+- Review and correct actual sets in completed workout history.
 
 ### Workout History
 

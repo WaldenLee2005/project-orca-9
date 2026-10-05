@@ -8,6 +8,7 @@ The dates are proposed planning targets starting October 5. They assume regular 
 
 - Fast individual-set logging, custom exercises, timed work, pause/resume and offline persistence.
 - Completed-workout summaries, full history, details and correction/deletion tools.
+- Private workout notes, completion/weekly recaps, elapsed workout time and an adjustable rest timer.
 - Searchable exercise library, favorites/recent exercises and reuse of previous actual values.
 - Editable starter and custom programs, weekly/cycle schedules, planned rest and adherence history.
 - Rest-aware streaks, weekly consistency, progress charts and optional local reminders.
@@ -16,7 +17,25 @@ The dates are proposed planning targets starting October 5. They assume regular 
 - Opt-in local coaching limited to reviewed suggestions for today's workout, with explanations and undo. Qualified policy review and a decision on durable decision history precede release.
 - Accessible phone flows, reliable upgrades, beta builds, store assets and support/privacy materials.
 
-Full social feeds, health/nutrition integrations, cloud sync, hosted AI and permanent automatic program adaptation belong to later releases.
+Vacation routines, full social feeds, music/supplement tracking, health/nutrition integrations, cloud sync, hosted AI and permanent automatic program adaptation belong to later releases under this proposed plan.
+
+## Requested features
+
+Added October 4, 2026. Proposed placement keeps the January 4 target: notes, recaps, workout time and a rest timer join v1; the larger additions remain in the undated backlog. These are planning targets and can be reprioritized.
+
+| Feature | Release plan | Scope |
+| --- | --- | --- |
+| Vacation mode | Later | Generate an editable travel routine from available equipment, preserving the regular plan. |
+| Notes to self | v1, October 19–November 1 | Private workout notes that persist offline and appear in history. |
+| Recaps | v1, November 2–15 | Completion and weekly summaries of actual workouts, progress and time. |
+| Feed | Later | Opt-in workout and PR sharing with friends and privacy controls. |
+| Music listened to | Later | Record song/playlist metadata with workouts; choose an integration before automatic capture. |
+| Supplements | Later | Private user-entered supplement records with amounts, times and notes. |
+| Offline mode with reconnect sync | Later | Sync queued account-owned changes after reconnect, handling retries and conflicts. |
+| Workout time | v1, October 19–November 1 | Elapsed session time with explicit pause rules, saved into history and recaps. |
+| Rest timer | v1, October 19–November 1 | Adjustable countdown between sets, including background/resume behavior. |
+
+Offline logging already works locally. Reconnect sync is new cloud work. Workout elapsed time, timed exercise sets and rest countdowns are separate measurements. The roadmap has 35 tasks: 27 scheduled release items and eight later items. Feed updates the existing social task rather than creating a duplicate.
 
 ## Current project state
 
