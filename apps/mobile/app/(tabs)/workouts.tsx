@@ -27,6 +27,7 @@ import {
   deleteWorkoutExercise,
   getActiveWorkoutSession,
   getCompletedWorkoutSessions,
+  getWorkoutSessionExercises,
   CompletedWorkoutSession,
   StoredSessionExercise,
   validateActualSets,
@@ -46,6 +47,7 @@ import { CoachedSetLogger } from "../../src/features/coach/CoachedSetLogger";
 import { ReadinessCheck } from "../../src/features/coach/CoachControls";
 import { CoachOverview } from "../../src/features/coach/CoachOverview";
 import { DEFAULT_READINESS, type Readiness } from "../../src/features/coach/coachModel";
+import { SavedSetNotes } from "../../src/features/workouts/SavedSetNotes";
 
 type SessionStep = "start" | "active" | "picker" | "custom" | "logger";
 
@@ -501,6 +503,7 @@ export default function WorkoutsScreen() {
       <ScrollView
         style={[styles.screen, { backgroundColor: theme.colors.background }]}
         contentContainerStyle={styles.startContent}
+        keyboardShouldPersistTaps="handled"
       >
         <ScreenHeading eyebrow={new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} title="Today" />
         <View style={styles.startHero}>
@@ -581,6 +584,7 @@ export default function WorkoutsScreen() {
       <ScrollView
         style={[styles.screen, { backgroundColor: theme.colors.background }]}
         contentContainerStyle={styles.activeContent}
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.activeHeader}>
           <View style={styles.heroTopRow}>
@@ -630,6 +634,7 @@ export default function WorkoutsScreen() {
               index={index}
               key={entry.id}
               onDelete={deleteLoggedExercise}
+              onNoteSaved={(setNumber, note) => setLoggedExercises((current) => current.map((item) => item.id === entry.id ? withSetNote(item, setNumber, note) : item))}
             />
           ))}
 
@@ -676,6 +681,7 @@ export default function WorkoutsScreen() {
       <ScrollView
         style={[styles.screen, { backgroundColor: theme.colors.background }]}
         contentContainerStyle={styles.loggerContent}
+        keyboardShouldPersistTaps="handled"
       >
         <Pressable accessibilityRole="button" onPress={() => setStep("picker")} style={styles.backButton}>
           <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
@@ -727,6 +733,7 @@ export default function WorkoutsScreen() {
       <ScrollView
         style={[styles.screen, { backgroundColor: theme.colors.background }]}
         contentContainerStyle={styles.loggerContent}
+        keyboardShouldPersistTaps="handled"
       >
         <Pressable accessibilityRole="button" disabled={isSavingExercise} onPress={() => setStep(selectedProgramEntryId ? "active" : "picker")} style={styles.backButton}>
           <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
@@ -803,6 +810,10 @@ function formatVolume(value: number) {
   return Math.round(value).toLocaleString();
 }
 
+function withSetNote(entry: StoredSessionExercise, setNumber: number, note: string | null): StoredSessionExercise {
+  return { ...entry, actualSets: getActualSets(entry).map((set, index) => index + 1 === setNumber ? { ...set, note } : set) };
+}
+
 type PreviousSessionRowProps = {
   session: CompletedWorkoutSession;
 };
@@ -814,9 +825,30 @@ function PreviousSessionRow({ session }: PreviousSessionRowProps) {
   const exerciseLabel = session.exerciseCount === 1 ? "exercise" : "exercises";
   const setLabel = session.totalSets === 1 ? "set" : "sets";
   const volumeUnit = Math.round(session.totalVolume) === 1 ? "lb" : "lbs";
+  const [expanded, setExpanded] = useState(false);
+  const [exercises, setExercises] = useState<StoredSessionExercise[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const loadRequest = useRef(0);
+  useEffect(() => () => { loadRequest.current += 1; }, []);
+  async function loadExercises() {
+    const request = ++loadRequest.current;
+    setLoading(true); setError("");
+    try {
+      const data = await getWorkoutSessionExercises(session.id);
+      if (request === loadRequest.current) setExercises(data);
+    } catch {
+      if (request === loadRequest.current) setError("Could not load the sets and notes. Please try again.");
+    } finally { if (request === loadRequest.current) setLoading(false); }
+  }
 
   return (
-    <View style={[styles.previousSessionRow, { borderColor: theme.colors.border }]}>
+    <View>
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded }}
+      accessibilityLabel={`Workout ${formatSessionDate(completedAt)} at ${formatSessionTime(completedAt)}, ${session.totalSets} ${setLabel}`}
+      accessibilityHint="Open saved exercises, sets, and private notes."
+      onPress={() => { setExpanded(!expanded); if (!expanded && !exercises && !loading) void loadExercises(); }}
+      style={[styles.previousSessionRow, { borderColor: theme.colors.border }]}>
       <View style={styles.previousSessionMeta}>
         <Text style={[styles.previousSessionDate, { color: theme.colors.text }]}>
           {formatSessionDate(completedAt)} / {formatSessionTime(completedAt)}
@@ -831,6 +863,19 @@ function PreviousSessionRow({ session }: PreviousSessionRowProps) {
         </Text>
         <Text style={[styles.previousSessionVolumeLabel, { color: theme.colors.mutedText }]}>{session.totalVolume === 0 && session.totalDurationSeconds > 0 ? "Timed work" : "Volume"}</Text>
       </View>
+      <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.mutedText} style={{ marginLeft: 8 }} />
+    </Pressable>
+    <View style={[styles.historyDetails, !expanded && { display: "none" }]}>
+      {loading ? <Text style={styles.programQueueHint}>Loading sets and notes…</Text> : null}
+      {error ? <>
+        <Text accessibilityRole="alert" style={styles.storageError}>{error}</Text>
+        <Pressable accessibilityRole="button" onPress={() => { void loadExercises(); }} style={styles.exitSessionButton}><Text style={styles.exitSessionText}>Try again</Text></Pressable>
+      </> : null}
+      {exercises?.map((entry) => <View key={entry.id} style={styles.historyExercise}>
+        <Text style={styles.programQueueName}>{entry.exercise.name}</Text>
+        <SavedSetNotes entry={entry} expandedInitially onNoteSaved={(setNumber, note) => setExercises((current) => current?.map((item) => item.id === entry.id ? withSetNote(item, setNumber, note) : item) ?? null)} />
+      </View>)}
+    </View>
     </View>
   );
 }
@@ -839,9 +884,10 @@ type SessionEntryRowProps = {
   entry: SessionLogEntry;
   index: number;
   onDelete: (entryId: string) => void;
+  onNoteSaved: (setNumber: number, note: string | null) => void;
 };
 
-function SessionEntryRow({ entry, index, onDelete }: SessionEntryRowProps) {
+function SessionEntryRow({ entry, index, onDelete, onNoteSaved }: SessionEntryRowProps) {
   const { styles, colors, ui } = useThemeStyles(themedStyles);
   const theme = useAppTheme();
   const rowTranslateX = useRef(new Animated.Value(0));
@@ -905,11 +951,15 @@ function SessionEntryRow({ entry, index, onDelete }: SessionEntryRowProps) {
           {getActualSets(entry).map((set, i) => `${i + 1}: ${set.durationSeconds != null ? formatDuration(set.durationSeconds) : `${set.reps} reps`} × ${set.weight} lb${set.warmup ? " (warm-up)" : ""}`).join(" · ")}
         </Text>
       </Animated.View>
+      <View style={styles.savedNotes}><SavedSetNotes entry={entry} onNoteSaved={onNoteSaved} /></View>
     </View>
   );
 }
 
 const themedStyles = createThemedStyles((colors, ui) => ({
+  historyDetails: { gap: 16, paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  historyExercise: { gap: 4 },
+  savedNotes: { paddingHorizontal: 20, paddingBottom: 12 },
   heroTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%" },
   exitSessionButton: { alignItems: "center", flexDirection: "row", gap: 6, minHeight: 44, paddingHorizontal: 8 },
   exitSessionText: { color: colors.accent, fontSize: 14, fontWeight: "600" },

@@ -99,10 +99,11 @@ Current Session flow:
 - Save Session marks the workout session completed after at least one exercise has been logged.
 - Exit session cancels only empty unfinished sessions; sessions with logged results pause and resume from Today. A shared workout mutation queue and conditional storage deletion protect results during concurrent saves. No schema or training-history reset is involved.
 - The start screen shows recent completed sessions below Start Session with exercise count, set count, and total volume.
+- Recent sessions expand to actual exercises/sets with optional private note editing. `SavedSetNotes` also provides review/edit/clear in the active log; collapsed sections retain unsaved note drafts.
 - Logged rows show exercise name, save time, sets, reps, and weight.
 - Saved rows support swipe-to-delete.
-- Sets, reps, and weight use custom ruler controls with a fixed vertical marker.
-- Weight supports 0.5 lb increments, with smaller half-pound ticks, medium 1 lb ticks, and large 5 lb ticks.
+- The current logger uses per-set numeric fields/steppers for actual weight, reps or duration, with optional effort/warm-up flags and a collapsed note-to-self editor. Add/copy/remove controls keep fast logging possible without notes.
+- Native schema 9 adds nullable `set_entries.note` without resetting schema-6/7/8 data. Web stores optional `WorkoutSet.note` under the existing key/marker. Notes are trimmed, bounded to 1,000 characters and blank notes become null. Serialized single-set updates preserve measurements and work for active/completed sessions; coaching inputs exclude private note text.
 
 ### Programs
 
@@ -224,6 +225,7 @@ SetEntry
   reps
   setNumber
   completedAt
+  note? (private, optional multiline text)
 
 TrainingProgram
   id
@@ -270,7 +272,7 @@ FeedEvent
   occurredAt
 ```
 
-The current logger UI captures one saved exercise row with aggregate sets/reps/weight. SQLite persistence expands that aggregate into one `SetEntry` row per set so later per-set editing and progress charts have a durable foundation.
+The current logger saves actual individual sets, including weight, reps or duration, optional effort/warm-up flags and private notes, as normalized `SetEntry` rows. Readers retain support for existing grouped web entries without inventing notes or effort.
 Active session saves batch those set rows in a single SQLite insert and return the newly saved exercise from the write input, avoiding a full session re-read on every saved exercise. Save Session writes `completed_at` on the session row so future history and progress queries can use completed workouts as their source of truth.
 Starting a session uses cached local profile state when available and does not block on profile lookup because `WorkoutSession.profile_id` is optional.
 

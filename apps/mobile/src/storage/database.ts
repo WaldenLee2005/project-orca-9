@@ -1,7 +1,7 @@
 import * as SQLite from "expo-sqlite";
 
 const DATABASE_NAME = "orca9.db";
-const DATABASE_VERSION = 8;
+const DATABASE_VERSION = 9;
 const PRELAUNCH_RESET_VERSION = 6;
 const DATABASE_OPEN_TIMEOUT_MS = 8000;
 
@@ -67,6 +67,7 @@ export async function initializeDatabase(database: SQLite.SQLiteDatabase) {
     }
     if (!setColumns.some((column) => column.name === "effort")) await database.execAsync("ALTER TABLE set_entries ADD COLUMN effort TEXT;");
     if (!setColumns.some((column) => column.name === "is_warmup")) await database.execAsync("ALTER TABLE set_entries ADD COLUMN is_warmup INTEGER NOT NULL DEFAULT 0;");
+    if (!setColumns.some((column) => column.name === "note")) await database.execAsync("ALTER TABLE set_entries ADD COLUMN note TEXT;");
     const exerciseColumns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(workout_exercises);");
     if (!exerciseColumns.some((column) => column.name === "prescription_json")) await database.execAsync("ALTER TABLE workout_exercises ADD COLUMN prescription_json TEXT;");
     await ensureProfileColumns(database);
@@ -123,6 +124,7 @@ async function ensureCoreTables(database: SQLite.SQLiteDatabase) {
       duration_seconds INTEGER,
       effort TEXT,
       is_warmup INTEGER NOT NULL DEFAULT 0,
+      note TEXT,
       completed_at TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,

@@ -2,12 +2,12 @@
 
 ## Requested roadmap additions
 
-Requested October 4, 2026 and confirmed for the January 4, 2027 launch. These are planned capabilities, not implemented features. Specific start/completion dates and dependencies live in `ROADMAP.md` and the Notion roadmap. Core-flow beta starts November 2; all nine target implementation completion November 29 and join full-feature beta December 7–20 after the December 6 freeze.
+Requested October 4, 2026 and confirmed for the January 4, 2027 launch. These are planned capabilities unless implementation is called out below. Specific start/completion dates and dependencies live in `ROADMAP.md` and the Notion roadmap. Core-flow beta starts November 2; all nine target implementation completion November 29 and join full-feature beta December 7–20 after the December 6 freeze.
 
 | Feature | Planned behavior | Completion checks |
 | --- | --- | --- |
 | Vacation mode | Generate a temporary routine from the equipment available while traveling. Review and edit before using it, then return to the regular program. | Match available equipment, keep targets editable, preserve the original program and history, and restore the normal schedule without rewriting past rest days. |
-| Notes to self | Save private workout notes and review them later; exercise-specific notes can extend the initial scope. | Add/edit/delete notes, retain them offline after reload on native/web, and display them in workout history without sharing them to the feed. |
+| Notes to self | Optional private notes on each recorded set implemented; add/edit/clear them in the logger, active log and recent-session details. Session-level notes remain planned. | Retain notes offline after reload on native/web, preserve existing training data, keep notes out of coaching inputs and social sharing, and verify native phone flows before release. |
 | Recaps | Show a completion recap and weekly training summary from actual saved work. | Correct exercise/set/volume/time totals, PRs and consistency; respect timed work, rest days and history corrections without inventing results. |
 | Feed | Share opted-in workout and PR summaries with friends. | Private-by-default publishing, friendship/privacy checks, deletion/unsharing, and no automatic exposure of full workout logs or private notes. |
 | Music listened to | Manually record song/playlist names or links associated with a workout. | Retain metadata in workout history with offline save/reload and editing/deletion. Automatic capture requires a later provider choice and consent/permissions. |
@@ -16,7 +16,7 @@ Requested October 4, 2026 and confirmed for the January 4, 2027 launch. These ar
 | Workout time | Show elapsed workout time and save duration with completed sessions. | Explicit pause/resume rules, correct background/restart handling, and duration in history/recaps. Elapsed workout time stays separate from timed exercise sets. |
 | Rest timer | Run an adjustable countdown between sets. | Start/pause/skip/reset, correct background/resume behavior, and completion alerts that respect permissions and do not interfere with workout reminders. |
 
-Existing foundations: local offline workout storage, session start/completion timestamps, a database-level session notes field, a seven-day coach summary and Supabase auth/profile code. They do not establish a notes editor, weekly recap product, workout/rest timers, music/supplement tracking, vacation generator, feed or training-data sync.
+Existing foundations: local offline workout storage, session start/completion timestamps, a database-level session notes field, a seven-day coach summary and Supabase auth/profile code. The per-set notes editor is implemented; the session-level notes editor, weekly recap product, workout/rest timers, music/supplement tracking, vacation generator, feed and training-data sync remain planned.
 
 ## MVP Features
 
@@ -87,6 +87,8 @@ Current capabilities:
 - Record actual weight, reps or duration separately for each set with numeric fields/steppers.
 - Add/copy/remove individual sets.
 - Optionally record effort and warm-up status for each set.
+- Optionally add a private, multiline note to self for every rep or timed set (up to 1,000 characters). Copying a set clears the new note; coaching apply/undo preserves draft notes.
+- Review, add, edit or clear saved set notes from the active log and expandable recent sessions, with offline native/web persistence and no account requirement.
 - Save an exercise to the active session log.
 - Save the active session as a completed workout for future history/progress charts.
 - Show recent previous sessions below Start Session with exercise count, set count, and total volume.
@@ -110,6 +112,7 @@ Current capabilities:
 
 - Completed workout sessions are stored in the existing local SQLite workout/session/set tables.
 - The Session tab lists recent completed sessions as a compact history summary.
+- Tap a recent session to review its exercises and actual sets, and add/edit/clear private set notes. Full-history browsing and measurement corrections remain planned.
 
 Expected capabilities:
 

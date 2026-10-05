@@ -53,11 +53,13 @@ Account readiness moves to October 12–25. Define sync ownership, queues, confl
 
 Status reflects the repository audit on October 4, 2026. Implemented means code exists; it does not establish release or physical-device readiness.
 
+Implementation update, October 4: Optional private notes for every recorded set are implemented, with multiline entry, offline persistence, and review/edit/clear in the active log and recent-session details. Blank notes are optional; copying a set clears its note, and coaching apply/undo preserves draft notes. The additive storage upgrade preserves current training/profile data. TypeScript, 229 tests, iOS/Android/web bundles and phone-sized browser checks pass. Native device acceptance and session-level notes remain separate work.
+
 | Area | Current state | Work before release |
 | --- | --- | --- |
 | Exercise library | 400 licensed bundled exercises, search/filters, details and custom names implemented | Favorites/recent shortcuts and phone usability checks |
-| Workout logging | Individual actual sets, weight/reps/time, optional effort/warm-ups and pause/resume implemented | Verify gym logging speed, previous-value reuse and completion summary |
-| Workout history | Recent completed-session totals available | Full list, details, correction and deletion |
+| Workout logging | Individual actual sets, weight/reps/time, optional effort/warm-ups, per-set notes and pause/resume implemented | Verify gym logging speed, previous-value reuse and completion summary |
+| Workout history | Recent completed-session totals, expandable actual sets and private note editing available | Full list, measurement correction and deletion |
 | Programs | Starter/custom plans, typed targets, weekly/cycle schedules and activation implemented | Historical adherence and integration checks |
 | Streaks and progress | Rest-aware streaks, current-week consistency and actual-set charts implemented | Verify metrics after history corrections and device refreshes |
 | Reminders | Local scheduling and opt-in settings implemented | Physical-device permissions, delivery and cancellation checks |

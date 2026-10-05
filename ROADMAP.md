@@ -24,7 +24,7 @@ The private [Notion project hub](https://app.notion.com/p/3f0b1348a34d812c832ace
 
 The hub leads with a branching chart of the main release path and concurrent features, with node details and task links. Its [interactive chart backup](docs/notion/Orca%20Roadmap.html) uses the same dated snapshot; refresh it when dates or scope change.
 
-Current code includes charts, individual-set logging, weekly consistency and avatar upload. The detailed phase notes below distinguish implemented work from remaining release checks; older architecture/model descriptions may lag the current schema-8 coach prototype. Refer to the feature implementation and `apps/mobile/README.md` before changing behavior.
+Current code includes charts, individual-set logging, optional per-set notes, weekly consistency and avatar upload. The detailed phase notes below distinguish implemented work from remaining release checks; the current schema is 9 with an additive set-note upgrade. Refer to the feature implementation and `apps/mobile/README.md` before changing behavior.
 
 ## Requested features
 
@@ -33,7 +33,7 @@ The user added these nine features on October 4 and confirmed all nine for launc
 | Feature | Task | Start | Ready for beta | Completion scope |
 | --- | --- | --- | --- | --- |
 | Vacation mode | F01 | Nov 16 | Nov 29 | Reviewed travel routine generated from available equipment; preserve/restore the regular plan. |
-| Notes to self | F02 | Oct 19 | Nov 1 | Private workout notes, offline save/reload and history review; exercise-specific notes can follow. |
+| Notes to self | F02 | Oct 19 | Nov 1 | Optional private per-set notes implemented with offline persistence and recent-session review/edit/clear. Session-level notes and release device checks remain. |
 | Recaps | F03 | Nov 2 | Nov 15 | Completion and weekly summaries using actual sessions, working sets, volume, time, PRs and consistency. |
 | Feed | L02 | Nov 16 | Nov 29 | Opt-in friend-visible workout/PR summaries, tested audience permissions and unsharing/deletion. |
 | Music listened to | F04 | Nov 2 | Nov 8 | Manually record song/playlist names or links in workout history. |
@@ -42,7 +42,7 @@ The user added these nine features on October 4 and confirmed all nine for launc
 | Workout time | F07 | Oct 19 | Nov 1 | Elapsed session time, explicit pause rules and persistent duration in history/recaps. |
 | Rest timer | F08 | Oct 19 | Nov 1 | Adjustable between-set countdown, background/resume persistence and permitted completion cues. |
 
-Offline local logging already exists; reconnect/cloud sync does not. Session timestamps are only a foundation for workout time, and current timed-set totals are not session duration. The native notes column and seven-day coach review are foundations rather than completed notes/recap products. Feed extends the existing L02 task. L01 covers optional export/restore separately from F06 sync.
+Offline local logging already exists; reconnect/cloud sync does not. Session timestamps are only a foundation for workout time, and current timed-set totals are not session duration. Per-set notes are implemented; the native session-notes column and seven-day coach review remain foundations for session-level notes and recaps. Feed extends the existing L02 task. L01 covers optional export/restore separately from F06 sync.
 
 Lock sync ownership, queued-write/conflict rules and the notes/music/supplement/duration/vacation data contracts during R01/R13/R07, before sync implementation starts November 9. Sync, feed, vacation and coaching overlap in late November; review capacity weekly and retain December integration time for account switching/deletion, offline corrections and sharing privacy. Early beta includes only ready, checked flows; reviewed coach, OCR, reminders, feed and sync join when eligible. Final accessibility, data/device regression, privacy materials and the freeze cover all nine additions.
 
@@ -126,6 +126,7 @@ Current progress:
 - Session tab starts an active session.
 - Users add catalog or custom exercises.
 - Saving appends exercises to the session log with actual individual sets, weight, reps/time and optional effort/warm-up flags.
+- Every set supports an optional private note, including review/edit/clear from the active log and expandable recent-session details. Schema 9 preserves existing training data; copied sets start without notes.
 - Active session data is saved locally in SQLite.
 - Save Session completes the workout in SQLite for future progress/history views.
 - The Session start screen lists recent completed sessions.
@@ -138,7 +139,7 @@ Remaining:
 - Workout summary.
 - Repeat previous values quickly.
 - Verify fast entry and edge cases on phones.
-- Private workout notes plus persistent workout/rest timers, tracked as F02/F07/F08.
+- Session-level notes and native note-flow release checks, plus persistent workout/rest timers, tracked as F02/F07/F08.
 
 ## Phase 4: Local Workout History
 
@@ -160,6 +161,7 @@ Current progress:
 - Saved session exercises persist locally as normalized exercise and set rows.
 - Completed sessions are marked with `completed_at` and can be queried for progress charts.
 - Recent completed sessions appear in the Session tab as a compact history list.
+- Recent rows expand to actual exercises/sets with optional note editing; full-history browsing and measurement correction/deletion remain planned.
 
 Remaining:
 

@@ -1,5 +1,11 @@
 # Decision Log
 
+## 2026-10-04: Make Notes To Self Optional For Each Actual Set
+
+Decision: Add a collapsed note editor to every rep or timed set, with up to 1,000 characters of private multiline text. Review/add/edit/clear saved notes in the active log and recent-session details. Blank notes become null; copying measurements does not copy a note. Coaching apply/undo preserves draft notes, while coaching history excludes their text.
+
+Reason: The user wants a note for each recorded set without slowing or blocking normal logging. Native schema 9 adds a nullable column and preserves existing training/profile data; web retains its current storage key and training marker. Notes remain device-local with existing guest/account behavior and are not social content. Session-level notes and native device acceptance remain separate roadmap work.
+
 ## 2026-10-01: Use Opt-In Adaptive Local Workout Reminders
 
 Decision: Schedule notifications on the device from actual session-completion times and existing rest schedules. Profile controls opt-in plus the starting workout/rest times, defaulting to 6:00 PM/8:00 AM. Learning uses one latest completion per local date over 28 days and a circular time average. Training reminders occur 15 minutes before and 2 hours after that average, clamped to the same date; completed days are suppressed and rest days receive only a morning notice.

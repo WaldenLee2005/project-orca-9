@@ -8,7 +8,17 @@ import { getProgramLibrary } from "./programsRepository";
 import { ensureWebTrainingStorage } from "./trainingStorage";
 import { emitTrainingChange } from "./trainingChanges";
 
-export type WorkoutSet = { reps: number; weight: number; durationSeconds?: number | null; effort?: "easy" | "moderate" | "hard" | null; warmup?: boolean };
+export type WorkoutSet = { reps: number; weight: number; durationSeconds?: number | null; effort?: "easy" | "moderate" | "hard" | null; warmup?: boolean; note?: string | null };
+export const MAX_SET_NOTE_LENGTH = 1000;
+
+/** Notes are optional, private text; blank input clears the saved note. */
+export function normalizeWorkoutSetNote(note: unknown): string | null {
+  if (note == null) return null;
+  if (typeof note !== "string") throw new Error("Enter a text note or leave it blank.");
+  const normalized = note.trim();
+  if (normalized.length > MAX_SET_NOTE_LENGTH) throw new Error(`Keep each set note to ${MAX_SET_NOTE_LENGTH} characters or fewer.`);
+  return normalized || null;
+}
 export type ExerciseExposure = { sessionId: string; performedAt: string; exerciseId: string; actualSets: WorkoutSet[]; prescription?: ProgramExercise };
 export type StoredSessionExercise = {
   id: string;
@@ -157,6 +167,57 @@ export async function getActiveWorkoutSession() {
     exercises: await getWorkoutExercises(session.id),
     programPlan: decodeProgramPlan(session.program_plan_json)
   };
+}
+
+/** Saved sets from either an active or completed workout, in their original order. */
+export async function getWorkoutSessionExercises(sessionId: string): Promise<StoredSessionExercise[]> {
+  if (Platform.OS === "web") {
+    const sessions = await getWebWorkoutSessions(true);
+    const session = sessions.find((item) => item.id === sessionId);
+    if (!session) throw new Error("This workout could not be found.");
+    return session.exercises.map((exercise) => ({ ...exercise, actualSets: getActualSets(exercise) }));
+  }
+  const database = await getDatabase();
+  const session = await database.getFirstAsync<{ id: string }>("SELECT id FROM workout_sessions WHERE id = ?;", [sessionId]);
+  if (!session) throw new Error("This workout could not be found.");
+  return getWorkoutExercises(sessionId);
+}
+
+/** Edit only a single set's private note, including after workout completion. */
+export async function updateWorkoutSetNote(workoutExerciseId: string, setNumber: number, note: string | null): Promise<string | null> {
+  const normalizedNote = normalizeWorkoutSetNote(note);
+  if (!Number.isInteger(setNumber) || setNumber < 1 || setNumber > 12) throw new Error("This recorded set could not be found.");
+  return serializeWorkoutMutation(async () => {
+    const now = new Date().toISOString();
+    if (Platform.OS === "web") {
+      const sessions = await getWebWorkoutSessions(true);
+      const matches = sessions.flatMap((session, sessionIndex) => session.exercises.flatMap((exercise, exerciseIndex) =>
+        exercise.id === workoutExerciseId ? [{ sessionIndex, exerciseIndex, exercise }] : []));
+      if (matches.length !== 1) throw new Error("This recorded exercise could not be found.");
+      const { sessionIndex, exerciseIndex, exercise } = matches[0];
+      const actualSets = getActualSets(exercise);
+      if (!actualSets[setNumber - 1]) throw new Error("This recorded set could not be found.");
+      actualSets[setNumber - 1] = { ...actualSets[setNumber - 1], note: normalizedNote };
+      const nextSessions = [...sessions];
+      const exercises = [...sessions[sessionIndex].exercises];
+      exercises[exerciseIndex] = { ...exercise, actualSets };
+      nextSessions[sessionIndex] = { ...sessions[sessionIndex], exercises, updatedAt: now };
+      await saveWebWorkoutSessions(nextSessions);
+    } else {
+      const database = await getDatabase();
+      await database.withTransactionAsync(async () => {
+        const exercise = await database.getFirstAsync<{ workout_session_id: string }>(
+          "SELECT workout_session_id FROM workout_exercises WHERE id = ?;", [workoutExerciseId]);
+        if (!exercise) throw new Error("This recorded exercise could not be found.");
+        const result = await database.runAsync(
+          "UPDATE set_entries SET note = ?, updated_at = ? WHERE workout_exercise_id = ? AND set_number = ?;",
+          [normalizedNote, now, workoutExerciseId, setNumber]);
+        if (result.changes !== 1) throw new Error("This recorded set could not be found.");
+        await database.runAsync("UPDATE workout_sessions SET updated_at = ? WHERE id = ?;", [now, exercise.workout_session_id]);
+      });
+    }
+    return normalizedNote;
+  });
 }
 
 export async function getCompletedWorkoutSessions(limit = 8) {
@@ -637,7 +698,8 @@ async function getWebWorkoutSessions(requireValidStorage = false) {
     const parsed = JSON.parse(storedSessions);
     if (requireValidStorage && (!Array.isArray(parsed) || !parsed.every(isWebWorkoutSession)
       || !parsed.every((session) => session.completedAt === null || typeof session.completedAt === "string")
-      || new Set(parsed.map((session) => session.id)).size !== parsed.length)) {
+      || new Set(parsed.map((session) => session.id)).size !== parsed.length
+      || !parsed.every((session) => session.exercises.every(isValidStoredSessionExercise)))) {
       throw new Error("Invalid saved workout data.");
     }
     return Array.isArray(parsed) ? parsed.filter(isWebWorkoutSession) : [];
@@ -875,7 +937,7 @@ function toActiveWorkoutSession(session: WebWorkoutSession): ActiveWorkoutSessio
   return {
     id: session.id,
     startedAt: session.startedAt,
-    exercises: session.exercises,
+    exercises: session.exercises.map((exercise) => ({ ...exercise, actualSets: getActualSets(exercise) })),
     programPlan: parseWorkoutProgramPlan(session.programPlan)
   };
 }
@@ -891,6 +953,19 @@ function isWebWorkoutSession(value: unknown): value is WebWorkoutSession {
     typeof session.startedAt === "string" &&
     Array.isArray(session.exercises)
   );
+}
+
+function isValidStoredSessionExercise(value: unknown): value is StoredSessionExercise {
+  if (!value || typeof value !== "object") return false;
+  const exercise = value as StoredSessionExercise;
+  if (typeof exercise.id !== "string" || !exercise.exercise || typeof exercise.exercise.id !== "string"
+    || typeof exercise.exercise.name !== "string" || typeof exercise.savedAt !== "string") return false;
+  try {
+    validateWorkoutMeasurement(exercise);
+    const sets = getActualSets(exercise);
+    validateActualSets(sets);
+    return sets.length === exercise.sets;
+  } catch { return false; }
 }
 
 function decodeProgramPlan(value: string | null) {
@@ -940,7 +1015,7 @@ async function insertSetEntries(input: {
     return;
   }
 
-  const placeholders = input.setEntries.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
+  const placeholders = input.setEntries.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
   const values = input.setEntries.flatMap((setEntry, index) => [
     setEntry.id,
     input.workoutExerciseId,
@@ -950,6 +1025,7 @@ async function insertSetEntries(input: {
     input.actualSets[index].durationSeconds ?? null,
     input.actualSets[index].effort ?? null,
     input.actualSets[index].warmup ? 1 : 0,
+    normalizeWorkoutSetNote(input.actualSets[index].note),
     input.completedAt,
     input.completedAt,
     input.completedAt
@@ -965,6 +1041,7 @@ async function insertSetEntries(input: {
        duration_seconds,
        effort,
        is_warmup,
+       note,
        completed_at,
        created_at,
        updated_at
@@ -999,11 +1076,11 @@ async function getWorkoutExercises(sessionId: string) {
     [sessionId]
   );
 
-  const sets = await database.getAllAsync<{ workout_exercise_id: string; reps: number; weight: number; duration_seconds: number | null; effort: WorkoutSet["effort"]; is_warmup: number }>(
+  const sets = await database.getAllAsync<{ workout_exercise_id: string; reps: number; weight: number; duration_seconds: number | null; effort: WorkoutSet["effort"]; is_warmup: number; note: string | null }>(
     `SELECT set_entries.* FROM set_entries INNER JOIN workout_exercises ON workout_exercises.id = set_entries.workout_exercise_id
      WHERE workout_exercises.workout_session_id = ? ORDER BY set_number;`, [sessionId]);
   return rows.map((row) => ({ ...mapWorkoutExerciseRow(row), actualSets: sets.filter((set) => set.workout_exercise_id === row.id).map((set) => ({
-    reps: set.reps, weight: set.weight, durationSeconds: set.duration_seconds, effort: set.effort, warmup: Boolean(set.is_warmup)
+    reps: set.reps, weight: set.weight, durationSeconds: set.duration_seconds, effort: set.effort, warmup: Boolean(set.is_warmup), note: normalizeWorkoutSetNote(set.note)
   })) }));
 }
 
@@ -1045,7 +1122,8 @@ export function validateWorkoutMeasurement(input: { sets: number; reps: number; 
 }
 
 export function getActualSets(entry: { actualSets?: WorkoutSet[]; sets: number; reps: number; weight: number; durationSeconds?: number | null }): WorkoutSet[] {
-  return entry.actualSets ?? Array.from({ length: entry.sets }, () => ({ reps: entry.reps, weight: entry.weight, durationSeconds: entry.durationSeconds ?? null }));
+  const sets: WorkoutSet[] = entry.actualSets ?? Array.from({ length: entry.sets }, () => ({ reps: entry.reps, weight: entry.weight, durationSeconds: entry.durationSeconds ?? null }));
+  return sets.map((set) => ({ ...set, note: normalizeWorkoutSetNote(set.note) }));
 }
 
 export function validateActualSets(sets: WorkoutSet[]) {
@@ -1055,6 +1133,7 @@ export function validateActualSets(sets: WorkoutSet[]) {
     validateWorkoutMeasurement({ ...set, sets: 1 });
     if (set.effort != null && !["easy", "moderate", "hard"].includes(set.effort)) throw new Error("Choose a valid effort.");
     if (set.warmup != null && typeof set.warmup !== "boolean") throw new Error("Choose a valid set type.");
+    normalizeWorkoutSetNote(set.note);
   }
   if (sets.some((set) => (set.durationSeconds != null) !== (sets[0].durationSeconds != null))) throw new Error("Use either timed sets or rep sets for one exercise entry.");
 }
@@ -1066,14 +1145,18 @@ export async function getCoachHistory(): Promise<ExerciseExposure[]> {
     const sessions = (await getWebWorkoutSessions()).filter((session) => session.completedAt).sort((a, b) => b.completedAt!.localeCompare(a.completedAt!)).slice(0, 120);
     for (const session of sessions) {
       for (const exercise of session.exercises) result.push({ sessionId: session.id, performedAt: exercise.savedAt,
-        exerciseId: exercise.exercise.id, actualSets: getActualSets(exercise), prescription: exercise.prescription });
+        exerciseId: exercise.exercise.id, actualSets: getCoachSets(exercise), prescription: exercise.prescription });
     }
   } else {
     const database = await getDatabase();
     const sessions = await database.getAllAsync<{ id: string }>("SELECT id FROM workout_sessions WHERE completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 120;");
     for (const session of sessions) for (const exercise of await getWorkoutExercises(session.id)) result.push({
-      sessionId: session.id, performedAt: exercise.savedAt, exerciseId: exercise.exercise.id, actualSets: getActualSets(exercise), prescription: exercise.prescription
+      sessionId: session.id, performedAt: exercise.savedAt, exerciseId: exercise.exercise.id, actualSets: getCoachSets(exercise), prescription: exercise.prescription
     });
   }
   return result;
+}
+
+function getCoachSets(exercise: StoredSessionExercise): WorkoutSet[] {
+  return getActualSets(exercise).map(({ note: _privateNote, ...performance }) => performance);
 }

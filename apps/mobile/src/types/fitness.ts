@@ -33,6 +33,7 @@ export type SetEntry = {
   reps: number;
   setNumber: number;
   completedAt: string;
+  note?: string | null;
 };
 
 export type WorkoutExercise = {

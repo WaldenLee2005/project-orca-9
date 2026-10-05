@@ -10,7 +10,9 @@ Current implementation:
 - Tables for `user_profiles`, `workout_sessions`, `workout_exercises`, and `set_entries`.
 - Local profile rows include auth user id, email, handle, avatar URL, and profile visibility for the social/account foundation.
 - The current local profile is cached in memory after the first read/write; clear the cache on sign-out.
-- Saved aggregate exercises are expanded into one `set_entries` row per set.
+- Actual individual sets are saved as one `set_entries` row each; existing grouped web entries remain readable.
+- Native schema 9 adds nullable `set_entries.note` without resetting current training/profile data. Web keeps its existing key and schema marker. Optional notes are trimmed and limited to 1,000 characters; omitted/blank notes become null.
+- `getWorkoutSessionExercises` supports active/completed review; serialized `updateWorkoutSetNote` edits or clears one set without changing measurements, completion timestamps, prescriptions or schedules. Missing targets and failed reads/writes surface errors; private notes are excluded from coaching history.
 - Active workout saves batch set-entry inserts and avoid reloading the full session after each write.
 - Saving a session marks `workout_sessions.completed_at`, leaving completed workout data available for history and progress charts.
 - Database initialization times out and resets the shared open promise if SQLite stalls, allowing later retries instead of trapping workout actions in a pending state.

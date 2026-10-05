@@ -398,7 +398,7 @@ test("prelaunch SQLite reset clears training once, preserves profiles, and rolls
   assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 5);
   assert.equal(state.sql.prepare("SELECT COUNT(*) AS n FROM set_entries").get().n, 1, "failed reset rolls back old data");
   await initializeDatabase(state.database);
-  assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 8);
+  assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 9);
   for (const table of ["workout_sessions", "workout_exercises", "set_entries", "consistency_days", "program_library"]) assert.equal(state.sql.prepare("SELECT COUNT(*) AS n FROM " + table).get().n, 0);
   assert.equal(state.sql.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'training_programs'").get().n, 0);
   assert.equal(state.sql.prepare("SELECT display_name FROM user_profiles WHERE id = 'profile'").get().display_name, "Kept");
@@ -414,7 +414,7 @@ const scheduled = (mode = "cycle", startDate = "2026-09-01", kinds = ["training"
     exercises: kind === "training" ? [entry(`entry-${index}`, index ? "row" : "bench", index + 1, 8 + index)] : [] }))
 });
 
-test("SQLite 7 → 8 preserves sets, profiles, prescriptions and rest while adding optional coaching metadata", async (t) => {
+test("SQLite 7 → 9 preserves sets, profiles, prescriptions and rest while adding optional coaching metadata", async (t) => {
   setup(t, "ios");
   const saved = await programs.saveTrainingProgram(draft());
   const session = await workouts.createWorkoutSession();
@@ -428,7 +428,7 @@ test("SQLite 7 → 8 preserves sets, profiles, prescriptions and rest while addi
   assert.equal(state.sql.prepare("PRAGMA table_info(set_entries)").all().some((column) => column.name === "effort"), false, "partial migration rolls back");
   await initializeDatabase(state.database);
   await initializeDatabase(state.database);
-  assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 8);
+  assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 9);
   assert.deepEqual(await programs.getTrainingProgram(saved.id), saved);
   const restored = await workouts.getActiveWorkoutSession();
   assert.equal(restored.exercises[0].actualSets.length, 3);
@@ -460,7 +460,7 @@ test("actual-set validation rejects malformed feedback, mixed measurement types,
   for (const sets of [[], [{ reps: 8, weight: NaN }], [{ reps: 8, weight: 100, effort: "unknown-command" }], [{ reps: 8, weight: 100, warmup: "false" }], [{ reps: 8, weight: 100 }, { reps: 0, weight: 0, durationSeconds: 30 }]]) assert.throws(() => workouts.validateActualSets(sets));
 });
 
-test("SQLite 6 → 8 adds durations and coaching transactionally without resetting current workouts, programs or rest days", async (t) => {
+test("SQLite 6 → 9 adds durations and coaching transactionally without resetting current workouts, programs or rest days", async (t) => {
   setup(t, "ios");
   state.sql.exec("ALTER TABLE set_entries DROP COLUMN duration_seconds; PRAGMA user_version = 6;");
   const program = await programs.saveTrainingProgram(draft());
@@ -477,7 +477,7 @@ test("SQLite 6 → 8 adds durations and coaching transactionally without resetti
   assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 6);
   assert.equal(state.sql.prepare("SELECT COUNT(*) AS n FROM set_entries").get().n, 1);
   await initializeDatabase(state.database);
-  assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 8);
+  assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 9);
   assert.deepEqual(await programs.getTrainingProgram(program.id), program);
   const restored = await workouts.getActiveWorkoutSession();
   assert.equal(restored.exercises[0].reps, 8);

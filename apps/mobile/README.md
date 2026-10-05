@@ -87,7 +87,15 @@ Native schema 8 adds optional effort, warm-up flags, and prescription snapshots 
 
 The import screen now goes through a provider-independent adapter, still using local text/OCR by default. A fake-provider test suite exercises a strict catalog-ID/target schema and fixed errors. Model-written notes, scripts, extra operations, and arbitrary titles are rejected. No hosted endpoint or API key has been added; authentication, billing quotas, timeout enforcement and provider consent remain release gates before connecting a paid model. Production coaching, permanent program adaptation, full decision-history persistence, equipment substitutions and automatic schedule changes remain future work.
 
-## Automated checks
+## Try optional set notes
+
+Record a catalog or custom exercise with some sets left without notes. On any set, choose **Add note to self (optional)**, enter multiline text, edit or clear it, and save the exercise. Copying the last set must leave the new set's note empty. Confirm manual reps, timed work, effort and warm-ups still work, and coaching apply/undo retains typed notes.
+
+In the active log, choose **View sets and notes** to add/edit/clear one note. **Cancel** leaves the saved note unchanged; collapsing the section keeps typed drafts. Exit/resume and reload to verify saved notes. Complete the workout, tap it under **Recent sessions**, and review/edit/clear its set notes. Collapse/reopen the session while drafting or saving: text and saved changes must survive. Reload again and confirm unchanged weight/reps/time, totals and charts. Blank notes are optional; long notes stop at 1,000 characters. Check phone layout, keyboard, large text and light/dark appearances on native devices before release.
+
+SQLite schema 9 adds only a nullable set-note column to current schema-6/7/8 training data. Web keeps its existing storage keys/marker. Profile, programs, workouts and rest days survive; private notes are not passed to coaching or social sharing. Automated migration and note CRUD/retry/privacy checks run with isolated test storage.
+
+## Visual checks
 
 The app uses the Native design: system typography, blue actions, flat grouped surfaces, and device-following light/dark appearances. The bottom navigation is edge-to-edge and does not overlap scrolling content. Check all five tabs at phone size in both appearances, including exercise search focus/empty states, individual-set controls, program editor/reordering, import review, the rest-day button, charts, and optional sign-in. Programs contains user-saved plans and opt-in starter templates. This visual update makes no schema or storage changes.
 
@@ -102,6 +110,8 @@ Open **Programs → Starter programs** and tap a plan. Its read-only overview sh
 The weekly splits directly cover each major muscle group at least twice. Templates are general starting points, not individualized coaching: weights are unset, working sets exclude warmups, and users can adjust or replace every exercise. [ACSM's resistance-training guidance](https://acsm.org/resistance-training-guidelines-update-2026/) informs the frequency/volume approach; these specific routines are our curated templates, not ACSM-authored programs.
 
 Verify on web and device: save a copy (still OFF), activate it, and start a training day (ordered targets, no completed sets). Scheduled rest needs no logging and is recovered even after time away. A missed training day breaks the streak after local midnight; a later rest day starts a new run rather than bridging that gap. Explicit manual rest marking remains a user override, not an automatic conversion of missed days. Reload to verify persistence. All three presets are tested against both web storage and SQLite; no schema reset is introduced.
+
+## Automated checks
 
 Use Node 24+ for the native TypeScript and in-memory SQLite test harness:
 

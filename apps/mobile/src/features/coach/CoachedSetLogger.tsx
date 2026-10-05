@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { AppState, Text, View } from "react-native";
+import { AppState, Pressable, Text, TextInput, View } from "react-native";
 import { NumberField, DurationFields } from "../programs/ExerciseTargetEditor";
 import type { ProgramExercise } from "../programs/programModel";
-import { getCoachHistory, validateActualSets, type ExerciseExposure, type WorkoutSet } from "../../storage/workoutsRepository";
+import { getCoachHistory, MAX_SET_NOTE_LENGTH, validateActualSets, type ExerciseExposure, type WorkoutSet } from "../../storage/workoutsRepository";
 import { evaluateCoach, type Readiness } from "./coachModel";
 import { CoachButton, DecimalField, ReadinessCheck, themedCoachStyles } from "./CoachControls";
 import { useThemeStyles } from "../../theme/ThemeProvider";
+import { preserveWorkoutSetNotes } from "../workouts/setDraftNotes";
 
 export function CoachedSetLogger({ exerciseId, entry, readiness, onReadiness, saving, onSave, loadHistory = getCoachHistory }: {
   exerciseId: string; entry?: ProgramExercise; readiness: Readiness; onReadiness: (value: Readiness) => void;
@@ -15,7 +16,7 @@ export function CoachedSetLogger({ exerciseId, entry, readiness, onReadiness, sa
   const { styles: s } = useThemeStyles(themedCoachStyles);
   const [timed, setTimed] = useState(entry?.target.kind === "duration");
   const seed = (): WorkoutSet => ({ weight: entry?.load?.weight ?? NaN, reps: entry?.target.kind === "duration" ? 0 : entry?.target.kind === "repRange" ? entry.target.min : entry?.target.reps ?? 8,
-    durationSeconds: entry?.target.kind === "duration" ? entry.target.seconds : null, effort: null, warmup: false });
+    durationSeconds: entry?.target.kind === "duration" ? entry.target.seconds : null, effort: null, warmup: false, note: null });
   const [sets, setSets] = useState<WorkoutSet[]>(() => Array.from({ length: entry?.sets ?? 3 }, seed));
   const [history, setHistory] = useState<ExerciseExposure[] | null>(null);
   const [error, setError] = useState("");
@@ -43,13 +44,14 @@ export function CoachedSetLogger({ exerciseId, entry, readiness, onReadiness, sa
 
   useEffect(() => {
     if (applied && proposal?.key !== applied.key) {
-      setSets(applied.before); setApplied(null);
+      setSets((currentSets) => preserveWorkoutSetNotes(applied.before, currentSets)); setApplied(null);
       setNotice("The recommendation changed. Your pre-coach values were restored; review again.");
     }
   }, [proposal?.key, applied]);
 
   function edit(next: WorkoutSet[]) { setSets(next); setApplied(null); setNotice("Manual values. Save only what you actually complete."); }
   function update(index: number, patch: Partial<WorkoutSet>) { edit(sets.map((set, i) => i === index ? { ...set, ...patch } : set)); }
+  function updateNote(index: number, note: string) { setSets((currentSets) => currentSets.map((set, i) => i === index ? { ...set, note } : set)); }
   async function apply() {
     if (!entry || !proposal?.canApply || inFlight.current || applied) return;
     inFlight.current = true; setChecking(true); setError("");
@@ -63,8 +65,9 @@ export function CoachedSetLogger({ exerciseId, entry, readiness, onReadiness, sa
         setNotice("New information changed this recommendation. Review the refreshed card first."); return;
       }
       setApplied({ key: fresh.key, before: sets });
-      setSets(Array.from({ length: fresh.sets }, () => ({ ...seed(), weight: fresh.weight!, effort: null })));
-      setNotice("Applied to this exercise today only. Record actual results below; your program has not changed.");
+      const nextSets = preserveWorkoutSetNotes(Array.from({ length: fresh.sets }, () => ({ ...seed(), weight: fresh.weight!, effort: null })), sets);
+      setSets(nextSets);
+      setNotice(`Applied to this exercise today only. Record actual results below; your program has not changed.${nextSets.length > fresh.sets ? " Extra draft sets with notes were kept. Remove any you did not complete." : ""}`);
     } catch { setError("Could not verify the latest history. No recommendation was applied."); }
     finally { inFlight.current = false; if (mounted.current) setChecking(false); }
   }
@@ -90,7 +93,7 @@ export function CoachedSetLogger({ exerciseId, entry, readiness, onReadiness, sa
           <Text style={s.title}>{proposal.sets} sets · {proposal.weight} lb</Text>
           <Text style={s.copy}>Rep goals stay the same. Prototype rules—not a guarantee of a safe load.</Text>
           <View style={s.row}><CoachButton label={checking ? "Checking…" : applied ? "Applied for today" : "Use for today"} selected={!!applied} disabled={disabled || !!applied} onPress={apply} />
-            <CoachButton label={applied ? "Undo suggestion" : "Keep my values"} disabled={disabled} onPress={() => { if (applied) setSets(applied.before); setApplied(null); setNotice("Your values are unchanged by the coach. Edit below as needed."); }} /></View>
+            <CoachButton label={applied ? "Undo suggestion" : "Keep my values"} disabled={disabled} onPress={() => { if (applied) setSets((currentSets) => preserveWorkoutSetNotes(applied.before, currentSets)); setApplied(null); setNotice("Your values are unchanged by the coach. Edit below as needed."); }} /></View>
         </> : null}
       </> : <Text style={s.copy}>{history === null ? "Loading local performance…" : "No recommendation."}</Text>}
     </View> : null}
@@ -107,10 +110,34 @@ export function CoachedSetLogger({ exerciseId, entry, readiness, onReadiness, sa
       <View style={s.row}>{([ [null, "Effort: skip"], ["easy", "Easy"], ["moderate", "About right"], ["hard", "Hard"] ] as const).map(([effort, label]) =>
         <CoachButton key={String(effort)} label={label} selected={(set.effort ?? null) === effort} disabled={disabled} onPress={() => update(index, { effort })} />)}
         <CoachButton label="Warm-up set" selected={!!set.warmup} disabled={disabled} onPress={() => update(index, { warmup: !set.warmup })} /></View>
+      <SetNoteField value={set.note} setNumber={index + 1} disabled={disabled} onChange={(note) => updateNote(index, note)} />
     </View>)}
-    <CoachButton label="Add set (copy last values)" disabled={disabled || sets.length >= 12} onPress={() => edit([...sets, { ...sets[sets.length - 1], effort: null }])} />
+    <CoachButton label="Add set (copy last values)" disabled={disabled || sets.length >= 12} onPress={() => edit([...sets, { ...sets[sets.length - 1], effort: null, note: null }])} />
     {notice ? <Text accessibilityLiveRegion="polite" style={s.copy}>{notice}</Text> : null}
     {error ? <Text accessibilityRole="alert" style={s.error}>{error}</Text> : null}
     <CoachButton label={saving ? "Saving exercise…" : "Save completed exercise"} selected disabled={disabled} onPress={save} />
+  </View>;
+}
+
+function SetNoteField({ value, setNumber, onChange, disabled }: {
+  value?: string | null; setNumber: number; onChange: (value: string) => void; disabled: boolean;
+}) {
+  const { styles: s, colors } = useThemeStyles(themedCoachStyles);
+  const [expanded, setExpanded] = useState(!!value);
+  const label = `Note to self · set ${setNumber} (optional)`;
+  const action = expanded ? "Hide note to self" : value ? "Edit note to self" : "Add note to self";
+  return <View style={{ gap: 8 }}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${action} · set ${setNumber}`} accessibilityState={{ expanded, disabled }}
+      disabled={disabled} onPress={() => setExpanded(!expanded)} style={[s.button, { alignSelf: "flex-start" }, disabled && { opacity: 0.45 }]}>
+      <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>{action}</Text>
+    </Pressable>
+    {expanded ? <>
+      <Text style={s.copy}>{label}</Text>
+      <TextInput accessibilityLabel={label} accessibilityHint="Optional private note about this set. Leave blank to save without a note."
+        multiline textAlignVertical="top" maxLength={MAX_SET_NOTE_LENGTH} value={value ?? ""} editable={!disabled}
+        onChangeText={onChange} placeholder="Anything to remember about this set" placeholderTextColor={colors.mutedText}
+        style={[s.input, { minHeight: 96, lineHeight: 22 }, disabled && { opacity: 0.45 }]} />
+      {value ? <CoachButton label={`Clear note · set ${setNumber}`} disabled={disabled} onPress={() => onChange("")} /> : null}
+    </> : null}
   </View>;
 }
