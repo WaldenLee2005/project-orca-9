@@ -1,5 +1,26 @@
 # Roadmap
 
+## First release target
+
+Planning snapshot: October 4, 2026. The user requested a feature-complete first release in three months. Target **January 4, 2027**, with a **December 6, 2026 feature freeze** and December reserved for real-gym beta testing and release fixes. Dates are proposed targets, dependent on regular development, native build/device access, qualified coaching policy review and store approval.
+
+Proposed v1 scope: fast individual-set logging, full completed-session history/details/correction, exercise shortcuts, programs/adherence, rest-aware streaks, charts, device-verified reminders and reviewed text/screenshot import, optional accounts, narrowly scoped local coaching, accessibility and release preparation. Keep full social/feed, health/nutrition, cloud sync, hosted AI and permanent automatic program adaptation for later releases.
+
+| Dates | Focus | Exit gate |
+| --- | --- | --- |
+| Oct 5–11 | Scope and installed iOS/Android baseline | Agreed acceptance checks and native builds |
+| Oct 8–Nov 1 | Logging speed, summaries, full history and correction | Reliable actual-set review/reuse and derived-data refresh |
+| Oct 26–Nov 15 | Upgrade safety, adherence, native reminders/import | Preserved existing data and recorded device evidence |
+| Nov 9–29 | Reviewed today-only coach and optional accounts | Qualified policy review, defined decision-history scope and reliable guest/account flows |
+| Nov 16–Dec 6 | Accessibility, metrics and integration | Agreed v1 acceptance checks pass; feature freeze |
+| Dec 7–20 | Real-gym beta, fixes and store materials | No unresolved release-blocking defects |
+| Dec 21–Jan 3 | Candidate, store review and buffer | Candidate verification and required approvals |
+| Jan 4 | Target first release | All release gates pass |
+
+The private [Notion project hub](https://app.notion.com/p/3f0b1348a34d812c832ace7baa9d4b75) and [roadmap database](https://app.notion.com/p/c8cffe9817e34c3fb723ec417fc126ab) contain 23 scheduled tasks and four later backlog items, with timeline, board, table and later-work views. [Hub snapshot](docs/notion/Orca%20Project%20Hub.md), [roadmap CSV](docs/notion/Orca%20Roadmap.csv) and [setup guide](docs/notion/README.md) are retained in the repository. Dependencies are completion/release gates; preparation can overlap. Status/date upkeep is manual, with no automatic GitHub sync.
+
+Current code includes charts, individual-set logging, weekly consistency and avatar upload. The detailed phase notes below distinguish implemented work from remaining release checks; older architecture/model descriptions may lag the current schema-8 coach prototype. Refer to the feature implementation and `apps/mobile/README.md` before changing behavior.
+
 ## Phase 0: Product Context
 
 Goal: Create the shared project context and keep future tasks aligned.
@@ -12,7 +33,7 @@ Deliverables:
 - Decision log.
 - Modular roadmap.
 
-Status: In progress.
+Status: Shared context foundation complete; maintained as the project changes.
 
 ## Phase 1: App Scaffold
 
@@ -27,7 +48,7 @@ Deliverables:
 - Core navigation shell.
 - Placeholder screens for Onboarding, Session, Exercises, Programs, Progress, and Profile.
 
-Status: Mostly complete.
+Status: Implemented; release configuration and device verification remain in Phase 11.
 
 ## Phase 2: Exercise Library
 
@@ -42,13 +63,18 @@ Deliverables:
 - Exercise picker for workout logging.
 - Custom exercise entry for missing movements.
 
-Status: In progress.
+Status: Core library implemented; shortcuts and release usability checks remain.
 
 Current progress:
 
 - RepDB free-tier assets and license files are stored locally.
-- Session picker uses a curated two-column exercise grid with images.
+- Exercises and Session share search/filter/detail flows for all 400 bundled exercises with licensed images.
 - Custom exercise name entry is supported from the picker.
+
+Remaining:
+
+- Favorites and recently used exercises.
+- Phone usability and accessibility checks.
 
 ## Phase 3: Tap-First Workout Logger
 
@@ -59,9 +85,7 @@ Deliverables:
 - Start workout/session flow.
 - Active session log.
 - Add exercise flow.
-- Weight horizontal ruler control.
-- Reps ruler control.
-- Sets ruler control.
+- Fast thumb-friendly individual-set entry for weight, reps and duration.
 - Save exercise to session.
 - Chronological session list.
 - Swipe-to-delete saved exercise.
@@ -69,25 +93,25 @@ Deliverables:
 - Save completed sessions for progress/history.
 - Workout summary.
 
-Status: In progress.
+Status: Core logging implemented; summary, previous-value reuse and gym usability remain.
 
 Current progress:
 
 - Session tab starts an active session.
 - Users add catalog or custom exercises.
-- Saving appends exercises to the session log with sets/reps/weight.
+- Saving appends exercises to the session log with actual individual sets, weight, reps/time and optional effort/warm-up flags.
 - Active session data is saved locally in SQLite.
 - Save Session completes the workout in SQLite for future progress/history views.
 - The Session start screen lists recent completed sessions.
-- Ruler controls exist for sets, reps, and weight.
-- Weight supports 0.5 lb increments.
+- The live logger uses per-set numeric fields/steppers and copy/add-set controls; earlier ruler controls are not the current logging flow.
+- Nonempty unfinished sessions pause/resume; empty-session exit creates no workout or streak credit.
 - Swipe-to-delete is available for saved exercise rows.
 
 Remaining:
 
 - Workout summary.
 - Repeat previous values quickly.
-- Per-set logging if needed.
+- Verify fast entry and edge cases on phones.
 
 ## Phase 4: Local Workout History
 
@@ -101,7 +125,7 @@ Deliverables:
 - Edit/delete workout entries.
 - Basic data migration pattern.
 
-Status: Planned; storage foundation started.
+Status: Recent-session totals and storage implemented; full history tools planned.
 
 Current progress:
 
@@ -109,6 +133,12 @@ Current progress:
 - Saved session exercises persist locally as normalized exercise and set rows.
 - Completed sessions are marked with `completed_at` and can be queried for progress charts.
 - Recent completed sessions appear in the Session tab as a compact history list.
+
+Remaining:
+
+- Full completed-session list, details and a summary shown after saving, with correct actual-set totals.
+- Correct/delete completed mistakes and refresh charts, coaching evidence, streaks and reminders consistently.
+- Verify additive upgrades preserve current data; do not repeat historical prelaunch resets.
 
 ## Phase 5: Programs
 
@@ -133,7 +163,7 @@ Current progress:
 
 Remaining:
 
-- Program adherence-history calendar.
+- Program adherence-history calendar, including unscheduled workouts and manual rest overrides.
 - Physical-device reminder delivery checks remain under Phase 6.
 
 ## Phase 6: Rest-Day-Aware Streaks
@@ -153,6 +183,7 @@ Status: In progress; rest-aware streaks and local reminders implemented.
 
 Current progress:
 
+- Rest-aware streaks and the current-week consistency display use actual workouts and planned/manual rest.
 - Profile opt-in schedules reminders before learned session-save times, follows up on unlogged training days and respects manual/scheduled rest.
 - A rolling 28-day local schedule refreshes with app activity and saved training changes; no backend or training-data reset is needed.
 
@@ -174,7 +205,17 @@ Deliverables:
 - Personal records.
 - Program adherence.
 
-Status: Planned.
+Status: Charts implemented; adherence presentation and release verification remain.
+
+Current progress:
+
+- PR/estimated strength, rep-weighted average weight and volume read actual completed local sets without an account.
+- Saved-lift selection, 1M/3M/All ranges and empty/single/multiple-point states are supported.
+
+Remaining:
+
+- Verify metrics and refresh after completed-history corrections, including timed and warm-up handling.
+- Program adherence-history presentation is tracked under Phase 5.
 
 ## Phase 8: Health and Fitness Integrations
 
@@ -215,14 +256,17 @@ Current progress:
 - Signed-in profile settings can edit display name/avatar/privacy while keeping handles immutable.
 - Profile visibility defaults to private.
 - Supabase SQL schema exists for social profiles, friendships, and feed events.
+- Avatar image upload and signed-in profile/privacy editing are implemented.
 
 Remaining:
 
-- Run/apply Supabase schema in the hosted project.
+- Confirm the hosted schema, policies and avatar bucket configuration; local SQL files do not establish deployment.
+- Device-verify optional account confirmation/recovery and deletion/profile/avatar cleanup, explicitly handling device-local training data; preserve independent guest logging for v1.
 - Friend request UI and repository functions.
 - Feed UI.
 - PR/session-summary publishing from local SQLite.
-- Avatar image upload flow.
+
+Full friends/feed publishing remains after v1. The existing auth/profile foundation is included in the first-release readiness checks.
 
 ## Phase 10: Nutrition Integrations
 
@@ -258,3 +302,10 @@ Current progress:
 - Dev-only diagnostics overlay is available through `npm run dev`.
 - The overlay captures app-wide render/runtime failures, console warnings/errors, and tracked async operations.
 - The overlay can copy the current diagnostics snapshot to the clipboard.
+
+Remaining:
+
+- Installed native builds, OCR compilation/device checks and reminder permission/delivery checks.
+- Narrow local-coach policy review, opt-in pilot and a decision on shipped decision-history persistence; see `COACH_IMPLEMENTATION_PLAN.md`.
+- Phone usability/accessibility, signed beta distribution, real-gym testing, icons/splash and store/support/privacy materials.
+- Final candidate regression checks and required store approvals before the release target.
