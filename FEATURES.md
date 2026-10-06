@@ -186,8 +186,8 @@ Current capabilities:
 - Time range controls.
 - Total lifting volume.
 - Exercise-specific progress.
-- Estimated strength improvements.
-- Personal records.
+- Personal records from the heaviest actual weight in any completed rep set, including multi-rep and warm-up sets; no estimate or multiplier is applied. Timed work remains outside these rep-based charts. Without saved rep sets, PRs prompts the user to log weights.
+- Running records use full history before the visible date range, so older PRs remain current. Current/previous records show saved decimal weights, and the current record shows its source set's actual weight/reps. All Lifts takes the highest weight across exercises, while selecting a lift isolates its records.
 - Rep-weighted average weight.
 - Local saved-session data; no account required.
 

@@ -75,6 +75,14 @@ export type ProgressStrengthPoint = {
   exerciseName: string;
 };
 
+export type ProgressPersonalRecordPoint = {
+  id: string;
+  completedAt: string;
+  weight: number;
+  reps: number;
+  exerciseName: string;
+};
+
 export type ProgressLiftOption = {
   key: string;
   name: string;
@@ -123,6 +131,15 @@ type ProgressStrengthPointRow = {
   estimated_one_rep_max: number;
   weight: number;
   reps: number;
+  exercise_name: string;
+};
+
+type ProgressPersonalRecordSetRow = {
+  id: string;
+  completed_at: string;
+  weight: number;
+  reps: number;
+  exercise_id: string | null;
   exercise_name: string;
 };
 
@@ -422,6 +439,44 @@ export async function getProgressStrengthSeries(input: { liftKey?: string | null
       );
 
   return rows.reverse().map(mapProgressStrengthPointRow);
+}
+
+/** Heaviest actual rep set, across the full completed history so older PRs remain available. */
+export async function getProgressPersonalRecordSeries(input: { liftKey?: string | null } = {}): Promise<ProgressPersonalRecordPoint[]> {
+  // The existing native picker lowercases ASCII in SQL; finish Unicode case folding here.
+  const liftKey = input.liftKey?.startsWith("custom:") ? input.liftKey.toLowerCase() : input.liftKey;
+  if (Platform.OS === "web") {
+    return getWebProgressPersonalRecordSeries({ liftKey });
+  }
+
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<ProgressPersonalRecordSetRow>(
+    `SELECT
+       workout_sessions.id,
+       workout_sessions.completed_at,
+       set_entries.weight,
+       set_entries.reps,
+       workout_exercises.exercise_id,
+       workout_exercises.exercise_name_snapshot AS exercise_name
+     FROM workout_sessions
+     INNER JOIN workout_exercises ON workout_exercises.workout_session_id = workout_sessions.id
+     INNER JOIN set_entries ON set_entries.workout_exercise_id = workout_exercises.id
+     WHERE workout_sessions.completed_at IS NOT NULL
+       AND set_entries.reps > 0 AND set_entries.duration_seconds IS NULL
+     ORDER BY workout_sessions.completed_at ASC, workout_sessions.id ASC,
+       workout_exercises.exercise_order ASC, set_entries.set_number ASC, workout_exercises.id ASC;`
+  );
+  const points = new Map<string, ProgressPersonalRecordPoint>();
+  for (const row of rows) {
+    // Share the web key function rather than SQLite's ASCII-only lower() for custom names.
+    const key = getExerciseProgressKey(row.exercise_id ?? "custom-", row.exercise_name);
+    if (liftKey && key !== liftKey) continue;
+    const existing = points.get(row.id);
+    if (!existing || row.weight > existing.weight) {
+      points.set(row.id, { id: row.id, completedAt: row.completed_at, weight: row.weight, reps: row.reps, exerciseName: row.exercise_name });
+    }
+  }
+  return [...points.values()];
 }
 
 export async function getProgressLiftOptions() {
@@ -924,6 +979,28 @@ async function getWebProgressStrengthSeries(input: { liftKey?: string | null; li
     .filter((point): point is ProgressStrengthPoint => Boolean(point))
     .sort((first, second) => first.completedAt.localeCompare(second.completedAt))
     .slice(-limit);
+}
+
+async function getWebProgressPersonalRecordSeries(input: { liftKey?: string | null }): Promise<ProgressPersonalRecordPoint[]> {
+  const sessions = await getWebWorkoutSessions();
+  const points: ProgressPersonalRecordPoint[] = [];
+  for (const session of sessions) {
+    if (!session.completedAt) continue;
+    let best: ProgressPersonalRecordPoint | null = null;
+    for (const exercise of session.exercises) {
+      if (input.liftKey && getExerciseProgressKey(exercise.exercise.id, exercise.exercise.name) !== input.liftKey) continue;
+      for (const set of getActualSets(exercise)) {
+        if (set.reps <= 0 || set.durationSeconds != null) continue;
+        // Preserve the first exercise/set when equally heavy sets share a session.
+        if (!best || set.weight > best.weight) {
+          best = { id: session.id, completedAt: session.completedAt, weight: set.weight, reps: set.reps, exerciseName: exercise.exercise.name };
+        }
+      }
+    }
+    if (best) points.push(best);
+  }
+  return points.sort((first, second) => first.completedAt.localeCompare(second.completedAt)
+    || (first.id < second.id ? -1 : first.id > second.id ? 1 : 0));
 }
 
 async function createWebWorkoutSession(programPlan: WorkoutProgramPlan | null) {

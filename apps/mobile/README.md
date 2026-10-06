@@ -34,7 +34,9 @@ Expo Router foundation for the lifting tracker MVP.
 
 6. Save an exercise, open Add Exercise, and search by name, muscle (`quads`), or equipment. An impossible query should show an empty state with Reset search. Verify custom exercises still work.
 
-7. Save a session, reload, and check history and the rest-day-aware streak. In Progress, switch PRs / Avg Weight / Volume, choose a saved lift, and change the range. One session produces one point; two or more produce a line.
+7. Save a session, reload, and check history and the rest-day-aware streak. In Progress, switch PRs / Avg Weight / Volume, choose a saved lift, and change the range. One eligible session produces one point; two or more produce a line.
+
+   PRs use actual weight: save 135.25 lb × 8 and confirm the PR/source is exactly 135.25 lb × 8 after completing the session and reloading, with no estimate or changed actual sets. Heavier multi-rep or warm-up sets must count; timed work and unfinished workouts must not. Lower subsequent weights must retain the record. Verify an older PR remains current in 1M/3M and beyond 160 sessions, while choosing another lift isolates its record. All Lifts shows the highest actual weight and its exercise. A lift with no completed rep sets must prompt the user to log weights. Avg Weight and Volume retain their existing behavior.
 
 8. Confirm Profile still offers optional sign-in and that local workouts/search/charts work without an account.
 

@@ -241,7 +241,8 @@ Status: Charts implemented; adherence presentation and release verification rema
 
 Current progress:
 
-- PR/estimated strength, rep-weighted average weight and volume read actual completed local sets without an account.
+- PRs chart the heaviest actual weight from completed rep sets without an account, including any rep count and warm-up sets. Full-history running records retain older PRs across chart ranges and preserve the source lift/set, actual reps and exact saved weight; timed work is excluded and no estimate is used.
+- Rep-weighted average weight and volume retain their existing completed-set behavior.
 - Saved-lift selection, 1M/3M/All ranges and empty/single/multiple-point states are supported.
 
 Remaining:

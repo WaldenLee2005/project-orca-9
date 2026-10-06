@@ -38,6 +38,58 @@ const schemaSource = readFileSync(new URL("../src/storage/database.ts", import.m
 const schema = schemaSource.match(/async function ensureCoreTables[\s\S]*?execAsync\(`([\s\S]*?)`\);/)[1];
 const exercise = (id, name) => ({ id, name, category: "Chest", focus: "Chest", equipment: "Barbell", image: 1 });
 
+function initializeStorage(platform, t) {
+  state.platform.OS = platform;
+  state.values.clear();
+  state.values.set("orca9.trainingSchemaVersion", "6");
+  state.sql = new DatabaseSync(":memory:");
+  state.sql.exec("PRAGMA foreign_keys = ON;");
+  state.sql.exec(schema);
+  t.after(() => state.sql.close());
+}
+
+const recordedExercise = (id, name, actualSets) => ({ exercise: exercise(id, name), actualSets });
+const recordedSession = (id, completedAt, exercises) => ({ id, completedAt, exercises });
+
+// Seed historical snapshots in each real storage format, including independently saved sets.
+function seedSessions(sessions) {
+  const savedSessions = sessions.map((session) => ({
+    ...session,
+    startedAt: session.completedAt ?? "2026-09-01T12:00:00.000Z",
+    updatedAt: session.completedAt ?? "2026-09-01T12:00:00.000Z",
+    exercises: session.exercises.map((entry, index) => ({
+      ...entry, id: `${session.id}-exercise-${index}`,
+      sets: entry.actualSets.length, reps: entry.actualSets[0].reps,
+      weight: entry.actualSets[0].weight, durationSeconds: entry.actualSets[0].durationSeconds ?? null,
+      savedAt: session.completedAt ?? "2026-09-01T12:00:00.000Z"
+    }))
+  }));
+  if (state.platform.OS === "web") {
+    state.values.set("orca9.workoutSessions", JSON.stringify(savedSessions));
+    return;
+  }
+  const insertSession = state.sql.prepare("INSERT INTO workout_sessions (id, started_at, completed_at, created_at, updated_at, notes) VALUES (?, ?, ?, ?, ?, ?);");
+  const insertExercise = state.sql.prepare("INSERT INTO workout_exercises (id, workout_session_id, exercise_id, custom_exercise_name, exercise_name_snapshot, exercise_order, saved_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);");
+  const insertSet = state.sql.prepare("INSERT INTO set_entries (id, workout_exercise_id, set_number, weight, reps, duration_seconds, is_warmup, note, completed_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
+  for (const session of savedSessions) {
+    insertSession.run(session.id, session.startedAt, session.completedAt, session.startedAt, session.updatedAt, "Private session note");
+    for (const [index, entry] of session.exercises.entries()) {
+      const custom = entry.exercise.id.startsWith("custom-");
+      insertExercise.run(entry.id, session.id, custom ? null : entry.exercise.id, custom ? entry.exercise.name : null,
+        entry.exercise.name, index, entry.savedAt, entry.savedAt, entry.savedAt);
+      for (const [setIndex, set] of entry.actualSets.entries()) {
+        insertSet.run(`${entry.id}-set-${setIndex}`, entry.id, setIndex + 1, set.weight, set.reps,
+          set.durationSeconds ?? null, set.warmup ? 1 : 0, set.note ?? null, entry.savedAt, entry.savedAt, entry.savedAt);
+      }
+    }
+  }
+}
+
+function historySnapshot() {
+  if (state.platform.OS === "web") return state.values.get("orca9.workoutSessions");
+  return JSON.stringify(["workout_sessions", "workout_exercises", "set_entries"].map((table) => state.sql.prepare(`SELECT * FROM ${table} ORDER BY id;`).all()));
+}
+
 for (const platform of ["web", "ios"]) {
   test(`${platform}: restored charts read completed sessions, filter lifts, and preserve history and streaks`, async (t) => {
     state.platform.OS = platform;
@@ -79,6 +131,116 @@ for (const platform of ["web", "ios"]) {
     assert.equal((await streaks.getStreakSummary()).currentActiveDays, 1);
     assert.equal((await streaks.getStreakSummary()).currentRestDays, 0, "a workout overrides same-day rest in the breakdown");
     assert.equal(await workouts.getActiveWorkoutSession(), null);
+  });
+}
+
+for (const platform of ["web", "ios"]) {
+  test(`${platform}: actual weight PRs include any rep count and warm-ups while excluding timed and unfinished work`, async (t) => {
+    initializeStorage(platform, t);
+    assert.deepEqual(await workouts.getProgressPersonalRecordSeries(), []);
+    seedSessions([
+      recordedSession("working", "2026-09-01T12:00:00.000Z", [
+        recordedExercise("bench-press", "Barbell Bench Press", [
+          { reps: 1, weight: 135, note: "Exact single and private note" },
+          { reps: 8, weight: 160 }, { reps: 20, weight: 150 }
+        ]),
+        recordedExercise("custom-other", "Other lift", [{ reps: 1, weight: 100 }]),
+        recordedExercise("custom-timed", "Timed lift", [{ reps: 0, weight: 500, durationSeconds: 30 }])
+      ]),
+      recordedSession("multi-only", "2026-09-02T12:00:00.000Z", [recordedExercise("bench-press", "Barbell Bench Press", [{ reps: 5, weight: 400 }])]),
+      recordedSession("warmup-only", "2026-09-03T12:00:00.000Z", [recordedExercise("bench-press", "Barbell Bench Press", [{ reps: 10, weight: 450, warmup: true }])]),
+      recordedSession("timed-only", "2026-09-04T12:00:00.000Z", [recordedExercise("custom-timed", "Timed lift", [{ reps: 0, weight: 500, durationSeconds: 30 }])]),
+      recordedSession("empty", "2026-09-05T12:00:00.000Z", []),
+      recordedSession("decimal", "2026-09-06T12:00:00.000Z", [recordedExercise("bench-press", "Barbell Bench Press", [{ reps: 7, weight: 135.25 }])]),
+      recordedSession("zero", "2026-09-07T12:00:00.000Z", [recordedExercise("custom-zero", "Zero lift", [{ reps: 4, weight: 0 }])]),
+      recordedSession("active", null, [recordedExercise("bench-press", "Barbell Bench Press", [{ reps: 1, weight: 999 }])])
+    ]);
+    const snapshot = historySnapshot();
+    const strengthBefore = await workouts.getProgressStrengthSeries();
+    const averageBefore = await workouts.getProgressAverageWeightSeries();
+    const volumeBefore = await workouts.getProgressVolumeSeries();
+    assert.deepEqual(await workouts.getProgressPersonalRecordSeries(), [
+      { id: "working", completedAt: "2026-09-01T12:00:00.000Z", weight: 160, reps: 8, exerciseName: "Barbell Bench Press" },
+      { id: "multi-only", completedAt: "2026-09-02T12:00:00.000Z", weight: 400, reps: 5, exerciseName: "Barbell Bench Press" },
+      { id: "warmup-only", completedAt: "2026-09-03T12:00:00.000Z", weight: 450, reps: 10, exerciseName: "Barbell Bench Press" },
+      { id: "decimal", completedAt: "2026-09-06T12:00:00.000Z", weight: 135.25, reps: 7, exerciseName: "Barbell Bench Press" },
+      { id: "zero", completedAt: "2026-09-07T12:00:00.000Z", weight: 0, reps: 4, exerciseName: "Zero lift" }
+    ]);
+    assert.equal((await workouts.getProgressPersonalRecordSeries({ liftKey: "bench-press" }))[0].weight, 160,
+      "a heavier eight-rep set beats a lighter single without estimating another weight");
+    const estimate = strengthBefore.find((point) => point.id === "working");
+    assert.equal(estimate.weight, 150, "the separate estimate API retains its original ranking");
+    assert.ok(Math.abs(estimate.estimatedOneRepMax - 250) < 0.001, "the actual record does not use this estimated value");
+    assert.deepEqual(await workouts.getProgressPersonalRecordSeries({ liftKey: "custom:timed lift" }), []);
+    assert.deepEqual(await workouts.getProgressPersonalRecordSeries({ liftKey: "missing" }), []);
+    assert.deepEqual(await workouts.getProgressStrengthSeries(), strengthBefore);
+    assert.deepEqual(await workouts.getProgressAverageWeightSeries(), averageBefore);
+    assert.deepEqual(await workouts.getProgressVolumeSeries(), volumeBefore);
+    assert.equal(historySnapshot(), snapshot, "chart reads never rewrite actual sets or private notes");
+  });
+
+  test(`${platform}: actual weight PR filtering keeps catalog IDs and named custom lifts distinct`, async (t) => {
+    initializeStorage(platform, t);
+    seedSessions([
+      recordedSession("first", "2026-09-01T12:00:00.000Z", [
+        recordedExercise("bench-press", "Barbell Bench Press", [{ reps: 3, weight: 135 }]),
+        recordedExercise("db-bench-press", "Dumbbell Bench Press", [{ reps: 8, weight: 70 }]),
+        recordedExercise("custom-bench", "Barbell Bench Press", [{ reps: 2, weight: 175 }]),
+        recordedExercise("custom-elite-1", "Élite Press", [{ reps: 5, weight: 200 }]),
+        recordedExercise("custom-test-1", "Test Lift", [{ reps: 10, weight: 160 }])
+      ]),
+      recordedSession("second", "2026-09-02T12:00:00.000Z", [
+        recordedExercise("custom-elite-2", "élite press", [{ reps: 2, weight: 220 }]),
+        recordedExercise("custom-test-2", "TEST LIFT", [{ reps: 4, weight: 165 }])
+      ])
+    ]);
+    assert.deepEqual((await workouts.getProgressPersonalRecordSeries()).map((point) => point.weight), [200, 220]);
+    assert.deepEqual((await workouts.getProgressPersonalRecordSeries({ liftKey: "bench-press" })).map((point) => point.weight), [135]);
+    assert.deepEqual((await workouts.getProgressPersonalRecordSeries({ liftKey: "db-bench-press" })).map((point) => point.weight), [70]);
+    assert.deepEqual((await workouts.getProgressPersonalRecordSeries({ liftKey: "custom:barbell bench press" })).map((point) => point.weight), [175]);
+    assert.deepEqual((await workouts.getProgressPersonalRecordSeries({ liftKey: "custom:test lift" })).map((point) => point.weight), [160, 165]);
+    assert.deepEqual((await workouts.getProgressPersonalRecordSeries({ liftKey: "custom:élite press" })).map((point) => point.weight), [200, 220]);
+    const pickerOptions = (await workouts.getProgressLiftOptions()).filter((option) => option.name.toLowerCase() === "élite press");
+    assert.ok(pickerOptions.length > 0);
+    for (const option of pickerOptions) {
+      assert.deepEqual((await workouts.getProgressPersonalRecordSeries({ liftKey: option.key })).map((point) => point.weight), [200, 220],
+        "the existing native picker key remains usable for Unicode custom lift names");
+    }
+  });
+
+  test(`${platform}: actual weight PR ties use saved exercise order and stable session IDs`, async (t) => {
+    initializeStorage(platform, t);
+    const completedAt = "2026-09-01T12:00:00.000Z";
+    seedSessions([
+      recordedSession("session-z", completedAt, [
+        recordedExercise("custom-first", "First lift", [{ reps: 3, weight: 140 }, { reps: 8, weight: 140 }]),
+        recordedExercise("custom-second", "Second lift", [{ reps: 10, weight: 140 }])
+      ]),
+      recordedSession("session-a", completedAt, [recordedExercise("bench-press", "Barbell Bench Press", [{ reps: 1, weight: 135 }])])
+    ]);
+    assert.deepEqual(await workouts.getProgressPersonalRecordSeries(), [
+      { id: "session-a", completedAt, weight: 135, reps: 1, exerciseName: "Barbell Bench Press" },
+      { id: "session-z", completedAt, weight: 140, reps: 3, exerciseName: "First lift" }
+    ]);
+    assert.deepEqual(await workouts.getProgressPersonalRecordSeries(), await workouts.getProgressPersonalRecordSeries(), "repeat reads keep ties stable");
+  });
+
+  test(`${platform}: actual weight PR history retains a record before more than 160 newer workouts`, async (t) => {
+    initializeStorage(platform, t);
+    const oldest = recordedSession("old-record", "2024-01-01T12:00:00.000Z", [recordedExercise("bench-press", "Barbell Bench Press", [{ reps: 8, weight: 405.25 }])]);
+    const later = Array.from({ length: 165 }, (_, index) => recordedSession(`later-${index}`, new Date(Date.UTC(2025, 0, index + 1, 12)).toISOString(), [
+      recordedExercise("bench-press", "Barbell Bench Press", [{ reps: 5, weight: 135 + index / 4 }])
+    ]));
+    seedSessions([...later.reverse(), oldest]);
+    const snapshot = historySnapshot();
+    const points = await workouts.getProgressPersonalRecordSeries({ liftKey: "bench-press" });
+    assert.equal(points.length, 166);
+    assert.equal(points[0].id, "old-record");
+    assert.equal(points[0].weight, 405.25);
+    assert.equal(points[0].reps, 8);
+    assert.equal(Math.max(...points.map((point) => point.weight)), 405.25);
+    assert.ok(points.every((point, index) => index === 0 || point.completedAt >= points[index - 1].completedAt));
+    assert.equal(historySnapshot(), snapshot);
   });
 }
 

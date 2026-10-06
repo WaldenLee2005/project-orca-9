@@ -1,5 +1,13 @@
 # Decision Log
 
+## 2026-10-06: Chart The Heaviest Actual Weight Lifted
+
+Decision: PRs show the heaviest actual weight lifted in any rep set from a completed workout. Any rep count and warm-up sets are eligible; timed work remains outside the rep-based charts. No one-rep estimate or multiplier is applied. All Lifts shows the highest actual weight across exercises with its source weight/reps visible; selecting an exercise limits records to that lift.
+
+Read all eligible completed history and compute running records before applying the chart's date range. Current and previous records retain their original source set even when it predates the visible range. Keep decimal weights, actual rep counts, existing average-weight/volume behavior and historical data unchanged; no schema upgrade or reset is needed.
+
+Reason: The user wants the PR chart to show the most weight actually lifted, regardless of how many reps were completed.
+
 ## 2026-10-05: Retire A Completed Program Day Until Tomorrow
 
 Decision: A nonempty workout completed on the current local date satisfies the program/day IDs in its saved plan snapshot. Show **Completed today**, remove that day's planned exercise preview and repeat launch actions, and offer **Start an extra workout** as manual tracking. Recheck stored completion when creating a session; unfinished workouts still resume intact. The active program and calendar-based schedule remain unchanged.

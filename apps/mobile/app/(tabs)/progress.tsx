@@ -20,15 +20,16 @@ import {
 import {
   getProgressAverageWeightSeries,
   getProgressLiftOptions,
-  getProgressStrengthSeries,
+  getProgressPersonalRecordSeries,
   getProgressVolumeSeries,
   ProgressAverageWeightPoint,
   ProgressLiftOption,
-  ProgressStrengthPoint,
+  ProgressPersonalRecordPoint,
   ProgressVolumePoint
 } from "../../src/storage/workoutsRepository";
 import { useAppTheme, useThemeStyles } from "../../src/theme/ThemeProvider";
 import { ScreenHeading } from "../../src/components/ScreenHeading";
+import { getRunningPrSeries, type RunningPrPoint } from "../../src/features/progress/personalRecords";
 
 type ProgressRange = "1M" | "3M" | "All";
 type ProgressTab = "prs" | "averageWeight" | "volume";
@@ -37,12 +38,6 @@ type ChartDatum = {
   id: string;
   completedAt: string;
   value: number;
-};
-type RunningPrPoint = ChartDatum & {
-  exerciseName: string;
-  isNewPr: boolean;
-  reps: number;
-  weight: number;
 };
 
 const progressRanges: ProgressRange[] = ["1M", "3M", "All"];
@@ -62,7 +57,7 @@ export default function ProgressScreen() {
   const [selectedLiftKey, setSelectedLiftKey] = useState<string | null>(null);
   const [selectedRange, setSelectedRange] = useState<ProgressRange>("3M");
   const [liftOptions, setLiftOptions] = useState<ProgressLiftOption[]>([]);
-  const [strengthSeries, setStrengthSeries] = useState<ProgressStrengthPoint[]>([]);
+  const [personalRecordSeries, setPersonalRecordSeries] = useState<ProgressPersonalRecordPoint[]>([]);
   const [averageWeightSeries, setAverageWeightSeries] = useState<ProgressAverageWeightPoint[]>([]);
   const [volumeSeries, setVolumeSeries] = useState<ProgressVolumePoint[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -73,24 +68,21 @@ export default function ProgressScreen() {
     return selectedLiftKey ? liftOptions.find((lift) => lift.key === selectedLiftKey)?.name ?? "Selected lift" : "All Lifts";
   }, [liftOptions, selectedLiftKey]);
 
-  const rangedStrengthSeries = useMemo(
-    () => filterSeriesByRange(strengthSeries, selectedRange),
-    [selectedRange, strengthSeries]
-  );
+  const allPrSeries = useMemo(() => getRunningPrSeries(personalRecordSeries), [personalRecordSeries]);
+  const prSeries = useMemo(() => filterSeriesByRange(allPrSeries, selectedRange), [allPrSeries, selectedRange]);
   const rangedAverageWeightSeries = useMemo(
     () => filterSeriesByRange(averageWeightSeries, selectedRange),
     [averageWeightSeries, selectedRange]
   );
   const rangedVolumeSeries = useMemo(() => filterSeriesByRange(volumeSeries, selectedRange), [selectedRange, volumeSeries]);
-  const prSeries = useMemo(() => getRunningPrSeries(rangedStrengthSeries), [rangedStrengthSeries]);
   const chartData =
     selectedTab === "prs"
       ? toPrChartData(prSeries)
       : selectedTab === "averageWeight"
         ? toAverageWeightChartData(rangedAverageWeightSeries)
         : toVolumeChartData(rangedVolumeSeries);
-  const latestPr = prSeries[prSeries.length - 1];
-  const personalRecords = prSeries.filter((point) => point.isNewPr);
+  const latestPr = allPrSeries[allPrSeries.length - 1];
+  const personalRecords = allPrSeries.filter((point) => point.isNewPr);
   const previousPr = personalRecords[personalRecords.length - 2];
   const latestAverageWeight = rangedAverageWeightSeries[rangedAverageWeightSeries.length - 1];
   const previousAverageWeight = rangedAverageWeightSeries[rangedAverageWeightSeries.length - 2];
@@ -102,11 +94,11 @@ export default function ProgressScreen() {
   const metricSet = selectedTab === "prs"
     ? {
         firstLabel: "Current PR",
-        firstValue: latestPr ? `${formatWeight(latestPr.value)} lb` : "-",
+        firstValue: latestPr ? `${formatPrWeight(latestPr.value)} lb` : "-",
         secondLabel: "PR Set",
-        secondValue: latestPr ? `${formatWeight(latestPr.weight)} x ${latestPr.reps}` : "-",
+        secondValue: latestPr ? `${formatPrWeight(latestPr.weight)} x ${latestPr.reps}` : "-",
         thirdLabel: "Previous PR",
-        thirdValue: previousPr ? `${formatWeight(previousPr.value)} lb` : "-"
+        thirdValue: previousPr ? `${formatPrWeight(previousPr.value)} lb` : "-"
       }
     : selectedTab === "averageWeight"
       ? {
@@ -141,9 +133,9 @@ export default function ProgressScreen() {
     setIsLoading(true);
 
     try {
-      const [nextLiftOptions, nextStrengthSeries, nextAverageWeightSeries, nextVolumeSeries] = await Promise.all([
+      const [nextLiftOptions, nextPersonalRecordSeries, nextAverageWeightSeries, nextVolumeSeries] = await Promise.all([
         getProgressLiftOptions(),
-        getProgressStrengthSeries({ liftKey: selectedLiftKey, limit: 160 }),
+        getProgressPersonalRecordSeries({ liftKey: selectedLiftKey }),
         getProgressAverageWeightSeries({ liftKey: selectedLiftKey, limit: 160 }),
         getProgressVolumeSeries({ liftKey: selectedLiftKey, limit: 160 })
       ]);
@@ -153,11 +145,11 @@ export default function ProgressScreen() {
         return;
       }
       setLiftOptions(nextLiftOptions);
-      setStrengthSeries(nextStrengthSeries);
+      setPersonalRecordSeries(nextPersonalRecordSeries);
       setAverageWeightSeries(nextAverageWeightSeries);
       setVolumeSeries(nextVolumeSeries);
       setLoadError(null);
-      operation.resolve(`${nextStrengthSeries.length} strength points loaded.`);
+      operation.resolve(`${nextPersonalRecordSeries.length} personal record points loaded.`);
     } catch (error) {
       if (request === loadRequest.current) setLoadError("Could not load saved session progress.");
       operation.fail(error);
@@ -209,7 +201,7 @@ export default function ProgressScreen() {
           <View style={styles.overallPickerText}>
             <Text style={[styles.overallPickerTitle, { color: theme.colors.text }]}>All Lifts</Text>
             <Text style={[styles.overallPickerCopy, { color: theme.colors.secondaryText }]}>
-              Combined PR, average weight, and volume trends.
+              Heaviest weight across lifts, average weight, and volume trends.
             </Text>
           </View>
         </Pressable>
@@ -291,7 +283,7 @@ export default function ProgressScreen() {
         <View style={styles.chartHeader}>
           <View style={styles.chartTitleGroup}>
             <Text style={[styles.chartEyebrow, { color: theme.colors.mutedText }]}>
-              {selectedTab === "prs" ? "Personal Records" : selectedTab === "averageWeight" ? "Average Weight" : "Volume"}
+              {selectedTab === "prs" ? "Heaviest Weight Lifted" : selectedTab === "averageWeight" ? "Average Weight" : "Volume"}
             </Text>
             <Text style={[styles.chartTitle, { color: theme.colors.text }]}>
               {selectedTab === "prs"
@@ -316,18 +308,20 @@ export default function ProgressScreen() {
           data={chartData}
           emptyText={
             selectedTab === "prs"
-              ? "Save heavy sets to build PRs."
+              ? allPrSeries.length ? "No sets in this range. Try All." : "Save completed sets to track your heaviest weight lifted."
               : selectedTab === "averageWeight"
                 ? "Save reps to build average weight."
                 : "Save sessions to build volume."
           }
           isLoading={isLoading}
           unit="lb"
+          formatValue={selectedTab === "prs" ? formatPrWeight : formatWeight}
+          metricLabel={selectedTab === "prs" ? "Heaviest weight" : "Progress"}
         />
 
         {selectedTab === "prs" && latestPr ? (
           <Text style={[styles.chartNote, { color: theme.colors.secondaryText }]}>
-            Current PR source: {latestPr.exerciseName} / {formatWeight(latestPr.weight)} x {latestPr.reps}
+            Current PR source: {latestPr.exerciseName} / {formatPrWeight(latestPr.weight)} lb × {latestPr.reps}
           </Text>
         ) : null}
         {selectedTab === "averageWeight" && latestAverageWeight ? (
@@ -425,9 +419,11 @@ type ProgressLineChartProps = {
   emptyText: string;
   isLoading: boolean;
   unit: string;
+  formatValue?: (value: number) => string;
+  metricLabel?: string;
 };
 
-function ProgressLineChart({ chartHeight, data, emptyText, isLoading, unit }: ProgressLineChartProps) {
+function ProgressLineChart({ chartHeight, data, emptyText, isLoading, unit, formatValue = formatWeight, metricLabel = "Progress" }: ProgressLineChartProps) {
   const { styles, colors, ui } = useThemeStyles(themedStyles);
   const theme = useAppTheme();
   const [chartWidth, setChartWidth] = useState(1);
@@ -457,7 +453,7 @@ function ProgressLineChart({ chartHeight, data, emptyText, isLoading, unit }: Pr
 
   return (
     <View accessible accessibilityRole="image"
-      accessibilityLabel={`Progress chart, ${data.length} saved sessions. Latest ${formatWeight(data[data.length - 1].value)} ${unit}; high ${formatWeight(maxValue)} ${unit}.`}
+      accessibilityLabel={`${metricLabel} chart, ${data.length} saved sessions. Latest ${formatValue(data[data.length - 1].value)} ${unit}; high ${formatValue(maxValue)} ${unit}.`}
       style={[styles.chart, { height: chartHeight }]} onLayout={handleLayout}>
       {[0, 1, 2].map((line) => (
         <View
@@ -512,7 +508,7 @@ function ProgressLineChart({ chartHeight, data, emptyText, isLoading, unit }: Pr
       <View style={styles.chartFooter}>
         <Text style={[styles.axisLabel, { color: theme.colors.mutedText }]}>{formatPointDate(data[0].completedAt)}</Text>
         <Text style={[styles.axisLabel, { color: theme.colors.mutedText }]}>
-          {formatWeight(maxValue)} {unit} high
+          {formatValue(maxValue)} {unit} high
         </Text>
         <Text style={[styles.axisLabel, { color: theme.colors.mutedText }]}>
           {formatPointDate(data[data.length - 1].completedAt)}
@@ -533,43 +529,6 @@ function getSavedPickerExercises(liftOptions: ProgressLiftOption[]) {
       focus: "Saved custom exercise",
       equipment: "Custom",
       image: sessionExercises[0].image
-    };
-  });
-}
-
-function getRunningPrSeries(data: ProgressStrengthPoint[]): RunningPrPoint[] {
-  let currentPr: RunningPrPoint | null = null;
-
-  return data.map((point) => {
-    const isNewPr = !currentPr || point.estimatedOneRepMax > currentPr.value;
-
-    if (isNewPr) {
-      currentPr = {
-        id: point.id,
-        completedAt: point.completedAt,
-        exerciseName: point.exerciseName,
-        isNewPr,
-        reps: point.reps,
-        value: point.estimatedOneRepMax,
-        weight: point.weight
-      };
-    }
-
-    const activePr = currentPr ?? {
-      id: point.id,
-      completedAt: point.completedAt,
-      exerciseName: point.exerciseName,
-      isNewPr,
-      reps: point.reps,
-      value: point.estimatedOneRepMax,
-      weight: point.weight
-    };
-
-    return {
-      ...activePr,
-      id: point.id,
-      completedAt: point.completedAt,
-      isNewPr
     };
   });
 }
@@ -646,6 +605,10 @@ function formatPointDate(value: string) {
 
 function formatWeight(value: number) {
   return Math.round(value).toLocaleString();
+}
+
+function formatPrWeight(value: number) {
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 function formatSignedWeight(value: number) {

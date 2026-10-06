@@ -144,7 +144,9 @@ Owns streak rules, including rest-day-aware streaks. A planned rest day should c
 Owns charts and strength trends, including stock-chart-like visualizations of total lifting progress.
 
 - Restored the dashboard from `progress-dashboard-charts` without replacing the current auth, workout history, database, or streak implementation.
-- PRs (estimated one-rep max), rep-weighted average weight, and volume read completed local sessions on web and native SQLite.
+- PRs use the heaviest actual weight lifted in any completed rep set, regardless of rep count or warm-up status. `getProgressPersonalRecordSeries` reads one heaviest set per session without a history cap on web and native SQLite; timed work remains outside these rep-based charts. The previous estimated-strength API remains available but no longer supplies the PR chart.
+- The PR chart computes running records over full history before filtering its 1M/3M/All range. Current/previous records and their source set stay tied to full history; All Lifts shows the highest actual weight across exercises, while choosing a lift isolates its records. Saved decimal weights and the source set's actual reps are retained; missing results show an instruction to log weights.
+- Rep-weighted average weight and volume retain their existing completed-session queries and behavior.
 - Supports all lifts or an individual saved lift, 1M/3M/All ranges, focus refresh, and stale-request protection. No account is required.
 
 ### Integrations
@@ -350,7 +352,7 @@ The progress dashboard can borrow the feel of a stock chart:
 
 - Trend line over time.
 - Time ranges such as 1W, 1M, 3M, 6M, 1Y, All.
-- Metrics such as total volume, estimated one-rep max, personal records, and completion rate.
+- Metrics such as total volume, heaviest weight lifted, personal records, and completion rate.
 
 ## Cross-Platform Notes
 
