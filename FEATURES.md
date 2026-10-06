@@ -86,7 +86,8 @@ Current capabilities:
 - Save the active session, logged exercises, and set rows locally with SQLite.
 - Record weight with a swipeable in-box ruler, fixed marker, 0.5 lb snapping and distinct 0.5/1/5/10 lb ticks. Native haptic feedback accompanies changes; exact decimal entry and accessible step controls remain available. Reps/duration keep numeric steppers.
 - Horizontal touch gestures support continuous movement and direction changes until release, retaining short swipes and chosen values through scrolling handoffs. Weight shortcuts appear below sets without moving the active scale. ±5/±10 lb buttons support larger changes.
-- Prefill an exercise's blank weights from its recent rep-weighted working-set average (latest three eligible completed workouts within 90 local days), even with coaching off. Exclude warm-ups/timed work and incompatible known load context; preserve prescribed/manual weights and explicit clearing. Named custom lifts match across workouts. With no history, enter the first weight directly and optionally copy it into empty sets.
+- Start an exercise's scale at its last saved working-set weight, including saved work in an unfinished session. Keep exact decimals/zero; exclude warm-ups/timed work and incompatible load context. Untouched program defaults yield to last saved work, while manual interaction, copying and explicit clearing stay intact. Named custom lifts match across workouts. Without history, use the program load or type the first weight and copy it into empty sets.
+- Keep the recent rep-weighted average (latest three eligible completed workouts within 90 local days) as an optional reuse shortcut.
 - Add/copy/remove individual sets.
 - Optionally record effort in one compact Skip / Easy / Right / Hard row and retain warm-up status for each set.
 - Toggle load coaching once for the whole session, with a saved program default and a persistent session override. Per-exercise setup controls are removed; existing explicit load metadata stays preserved. Reviewed set-count reductions for programs without load metadata leave actual weights untouched; numeric load proposals still require trustworthy weight/equipment context.
@@ -101,7 +102,7 @@ Current capabilities:
 
 Expected capabilities:
 
-- Reuse previous reps/durations alongside recent weight prefill.
+- Reuse previous reps/durations alongside last saved weight prefill.
 - View workout summary.
 - Review and correct actual sets in completed workout history.
 

@@ -46,6 +46,7 @@ function mountLogger(initialProps = {}) {
     loadHistory: async () => [], onSave: async (sets) => { saved.push(sets); },
     ...initialProps
   };
+  props.loadSavedHistory ??= props.loadHistory;
   const hooks = {
     useRef(initial) { const slot = index++; return slots[slot] ??= { current: initial }; },
     useState(initial) {
@@ -75,7 +76,7 @@ function mountLogger(initialProps = {}) {
     "@expo/vector-icons": { Ionicons: "Ionicons" },
     "../programs/ExerciseTargetEditor": { NumberField: "NumberField", DurationFields: "DurationFields" },
     "../../storage/workoutsRepository": {
-      getCoachHistory: async () => [], MAX_SET_NOTE_LENGTH: 1000,
+      getCoachHistory: async () => [], getSavedExerciseHistory: async () => [], MAX_SET_NOTE_LENGTH: 1000,
       validateActualSets(sets) { if (sets.some((set) => !Number.isFinite(set.weight))) throw new Error("Choose a weight for every set."); }
     },
     "./coachModel": {
@@ -115,7 +116,7 @@ function mountLogger(initialProps = {}) {
     ];
   }
   async function flush() {
-    for (let turn = 0; turn < 4; turn++) { await Promise.resolve(); render(); }
+    for (let turn = 0; turn < 8; turn++) { await Promise.resolve(); render(); }
   }
   render();
   return {
@@ -126,6 +127,7 @@ function mountLogger(initialProps = {}) {
     notes: () => nodes((node) => node.type?.name === "SetNoteField").map((node) => node.props.value),
     text: () => nodes((node) => node.type === "Text").map((node) => [node.props.children].flat(Infinity).join("")).join("\n"),
     changeWeight(row, value) { nodes((node) => node.type === "WeightRuler")[row].props.onChange(value); render(); },
+    interactWeight(row) { nodes((node) => node.type === "WeightRuler")[row].props.onInteract(); render(); },
     changeReps(row, value) { nodes((node) => node.type === "NumberField")[row].props.onChange(value); render(); },
     changeEffort(row, value) { nodes((node) => node.type === "EffortSelector")[row].props.onChange(value); render(); },
     changeNote(row, value) { nodes((node) => node.type?.name === "SetNoteField")[row].props.onChange(value); render(); },
@@ -141,12 +143,13 @@ function mountLogger(initialProps = {}) {
   };
 }
 
-test("coaching-off logger centers blank drafts on real recent weights without saving results", async () => {
+test("coaching-off logger starts drafts at the last saved weight without saving results", async () => {
   const pending = deferred();
   const logger = mountLogger({ loadHistory: () => pending.promise });
   assert.ok(logger.weights().every(Number.isNaN));
   pending.resolve(history()); await logger.flush();
   assert.deepEqual(logger.weights(), [135, 135, 135]);
+  assert.match(logger.text(), /Last saved: 135 lb/);
   assert.match(logger.text(), /Recent average: 135 lb/);
   assert.deepEqual(logger.saved, [], "prefilling never persists completed results");
   logger.unmount();
@@ -160,7 +163,8 @@ test("custom logger uses saved names across new selection/native IDs and keeps c
   ];
   const logger = mountLogger({ exerciseId: "custom-new-selection", exerciseName: "my bench", loadHistory: async () => customHistory });
   await logger.flush();
-  assert.deepEqual(logger.weights(), [125, 125, 125]);
+  assert.deepEqual(logger.weights(), [150, 150, 150]);
+  assert.match(logger.text(), /Last saved: 150 lb/);
   assert.match(logger.text(), /Recent average: 125 lb · 2 workouts/);
   assert.deepEqual(logger.saved, []);
   logger.unmount();
@@ -182,6 +186,81 @@ test("delayed history preserves manual decimals, deliberate clearing, reps and p
   logger.unmount();
 });
 
+test("delayed last-save seeding preserves same-number interaction, clearing and copied program seeds", async () => {
+  const pending = deferred();
+  const args = [];
+  const load = { unit: "lb", weight: 50, increment: 5, convention: "total", equipmentKey: "Barbell" };
+  const prescription = programEntry({ load });
+  const logger = mountLogger({ entry: prescription, exerciseName: "Bench Press", loadHistory: async () => [],
+    loadSavedHistory: (...values) => { args.push(values); return pending.promise; } });
+  logger.interactWeight(0); // Exact Done may choose the existing 50 without onChange.
+  logger.changeWeight(1, NaN);
+  logger.changeReps(2, 11);
+  logger.changeNote(2, "Keep my draft note");
+  await logger.press("Add set (copy last values)");
+  pending.resolve([{ ...history()[0], prescription, actualSets: [
+    { weight: 120, reps: 8 }, { weight: 130.25, reps: 6 }, { weight: 20, reps: 10, warmup: true }
+  ] }]);
+  await logger.flush();
+  assert.deepEqual(args, [["bench", "Bench Press"]], "saved-history lookup receives selected lift identity");
+  assert.equal(logger.weights()[0], 50, "the explicit same-number choice wins over late history");
+  assert.ok(Number.isNaN(logger.weights()[1]), "explicit clearing stays blank");
+  assert.equal(logger.weights()[2], 130.25, "untouched finite program seed uses exact last working weight");
+  assert.equal(logger.weights()[3], 50, "copied program seed is an explicit draft choice");
+  assert.equal(logger.reps()[2], 11);
+  assert.equal(logger.notes()[2], "Keep my draft note");
+  assert.match(logger.text(), /Last saved: 130.25 lb/);
+  assert.deepEqual(logger.saved, []);
+  logger.unmount();
+});
+
+test("last saved work in an active session wins over completed averages, which remain optional", async () => {
+  const logger = mountLogger({ loadHistory: async () => history(100), loadSavedHistory: async () => [{
+    ...history(130.25)[0], sessionId: "active-session", performedAt: new Date(Date.now() - 1000).toISOString()
+  }] });
+  await logger.flush();
+  assert.deepEqual(logger.weights(), [130.25, 130.25, 130.25]);
+  assert.match(logger.text(), /Last saved: 130.25 lb/);
+  assert.match(logger.text(), /Recent average: 100 lb/);
+  await logger.press("Use recent 100 lb for all sets");
+  assert.deepEqual(logger.weights(), [100, 100, 100]);
+  await logger.foreground();
+  assert.deepEqual(logger.weights(), [100, 100, 100], "refresh never replaces the user's explicit average selection");
+  logger.unmount();
+});
+
+test("completed average alone is shown without choosing weights until the user applies it", async () => {
+  const logger = mountLogger({ loadHistory: async () => history(100), loadSavedHistory: async () => [] });
+  await logger.flush();
+  assert.ok(logger.weights().every(Number.isNaN), "the optional average is not a fallback default");
+  assert.match(logger.text(), /Recent average: 100 lb/);
+  assert.doesNotMatch(logger.text(), /Last saved:/);
+  await logger.press("Use recent 100 lb for all sets");
+  assert.deepEqual(logger.weights(), [100, 100, 100]);
+  logger.unmount();
+});
+
+test("one history feed failing leaves the other usable and retries preserve manual choices", async () => {
+  const usableLast = mountLogger({ loadHistory: async () => { throw new Error("Completed history failed"); }, loadSavedHistory: async () => history(125) });
+  await usableLast.flush();
+  assert.deepEqual(usableLast.weights(), [125, 125, 125]);
+  assert.match(usableLast.text(), /Some previous weights could not be read/);
+  assert.doesNotMatch(usableLast.text(), /Recent average:/);
+  usableLast.unmount();
+  let failSaved = true;
+  const usableAverage = mountLogger({ loadHistory: async () => history(100), loadSavedHistory: async () => {
+    if (failSaved) throw new Error("Saved history failed"); return history(125);
+  } });
+  await usableAverage.flush();
+  assert.ok(usableAverage.weights().every(Number.isNaN));
+  assert.match(usableAverage.text(), /Recent average: 100 lb/);
+  usableAverage.changeWeight(0, 140);
+  failSaved = false; await usableAverage.foreground();
+  assert.deepEqual(usableAverage.weights(), [140, 125, 125]);
+  assert.doesNotMatch(usableAverage.text(), /Some previous weights could not be read/);
+  usableAverage.unmount();
+});
+
 test("removing an earlier row remaps a cleared weight and copying protects the new draft", async () => {
   const pending = deferred();
   const logger = mountLogger({ loadHistory: () => pending.promise });
@@ -195,23 +274,29 @@ test("removing an earlier row remaps a cleared weight and copying protects the n
   logger.unmount();
 });
 
-test("prescribed weights retain priority and timed/no-history drafts do not invent load", async () => {
+test("last saved weights override untouched prescriptions while explicit average selection preserves other fields", async () => {
   const load = { unit: "lb", weight: 50, increment: 5, convention: "total", equipmentKey: "Barbell" };
   const comparableHistory = history();
   comparableHistory[0].prescription = programEntry({ load });
   const prescribed = mountLogger({ entry: programEntry({ load }), loadHistory: async () => comparableHistory });
   await prescribed.flush();
-  assert.deepEqual(prescribed.weights(), [50, 50, 50]);
+  assert.deepEqual(prescribed.weights(), [135, 135, 135]);
+  assert.match(prescribed.text(), /Last saved: 135 lb/);
   assert.match(prescribed.text(), /Recent average: 135 lb/);
+  prescribed.changeWeight(0, 50);
   prescribed.changeReps(0, 11);
   prescribed.changeNote(1, "Preserve my private note");
   prescribed.changeEffort(2, "hard");
   await prescribed.press("Use recent 135 lb for all sets");
-  assert.deepEqual(prescribed.weights(), [135, 135, 135], "an explicit action can select history over program weight");
+  assert.deepEqual(prescribed.weights(), [135, 135, 135], "an explicit action can select the optional average over manual values");
   assert.deepEqual(prescribed.reps(), [11, 8, 8]);
   assert.equal(prescribed.notes()[1], "Preserve my private note");
   assert.equal(prescribed.efforts()[2], "hard");
   prescribed.unmount();
+  const noSaved = mountLogger({ entry: programEntry({ load }) });
+  await noSaved.flush();
+  assert.deepEqual(noSaved.weights(), [50, 50, 50], "program seed survives when no actual saved measurement exists");
+  noSaved.unmount();
   for (const props of [
     { loadHistory: async () => [] },
     { entry: programEntry({ target: { kind: "duration", seconds: 45 } }), loadHistory: async () => history() }
@@ -225,7 +310,7 @@ test("prescribed weights retain priority and timed/no-history drafts do not inve
 test("newest history response wins, then foreground refresh leaves chosen baseline intact", async () => {
   const first = deferred(), second = deferred();
   let request = 0;
-  const logger = mountLogger({ loadHistory: () => ++request === 1 ? first.promise : request === 2 ? second.promise : Promise.resolve(history(145)) });
+  const logger = mountLogger({ loadSavedHistory: () => ++request === 1 ? first.promise : request === 2 ? second.promise : Promise.resolve(history(145)) });
   await logger.foreground();
   second.resolve(history(140)); await logger.flush();
   assert.deepEqual(logger.weights(), [140, 140, 140]);
@@ -242,11 +327,11 @@ test("a failed history read can recover without clearing a separate manual save 
   let fail = true;
   const logger = mountLogger({ loadHistory: async () => { if (fail) throw new Error("offline read failure"); return history(); } });
   await logger.flush();
-  assert.match(logger.text(), /Recent weights could not be read/);
+  assert.match(logger.text(), /Some previous weights could not be read/);
   await logger.press("Save completed exercise");
   assert.match(logger.text(), /Choose a weight for every set/);
   fail = false; await logger.foreground();
-  assert.doesNotMatch(logger.text(), /Recent weights could not be read/);
+  assert.doesNotMatch(logger.text(), /Some previous weights could not be read/);
   assert.match(logger.text(), /Choose a weight for every set/, "refresh clears its own error only");
   assert.deepEqual(logger.weights(), [135, 135, 135]);
   logger.unmount();
@@ -255,7 +340,8 @@ test("a failed history read can recover without clearing a separate manual save 
 test("replaced history loaders ignore stale completion from the old effect", async () => {
   const obsolete = deferred();
   const logger = mountLogger({ loadHistory: () => obsolete.promise });
-  await logger.update({ loadHistory: async () => history(150) });
+  const updated = async () => history(150);
+  await logger.update({ loadHistory: updated, loadSavedHistory: updated });
   assert.deepEqual(logger.weights(), [150, 150, 150]);
   obsolete.resolve(history(135)); await logger.flush();
   assert.deepEqual(logger.weights(), [150, 150, 150]);

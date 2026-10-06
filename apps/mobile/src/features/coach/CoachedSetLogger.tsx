@@ -3,19 +3,20 @@ import { AppState, Pressable, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { NumberField, DurationFields } from "../programs/ExerciseTargetEditor";
 import type { ProgramExercise } from "../programs/programModel";
-import { getCoachHistory, MAX_SET_NOTE_LENGTH, validateActualSets, type ExerciseExposure, type WorkoutSet } from "../../storage/workoutsRepository";
+import { getCoachHistory, getSavedExerciseHistory, MAX_SET_NOTE_LENGTH, validateActualSets, type ExerciseExposure, type WorkoutSet } from "../../storage/workoutsRepository";
 import { evaluateCoach, type Readiness } from "./coachModel";
 import { CoachButton, ReadinessCheck, themedCoachStyles } from "./CoachControls";
 import { useThemeStyles } from "../../theme/ThemeProvider";
 import { applyCoachSetProposal, preserveWorkoutSetNotes } from "../workouts/setDraftNotes";
 import { WeightRuler } from "../workouts/WeightRuler";
 import { EffortSelector } from "../workouts/EffortSelector";
-import { fillUntouchedDraftWeights, getRecentExerciseWeight, type RecentExerciseWeight } from "../workouts/weightHistory";
+import { fillUntouchedDraftWeights, getLastSavedExerciseWeight, getRecentExerciseWeight, type LastSavedExerciseWeight, type RecentExerciseWeight } from "../workouts/weightHistory";
 
-export function CoachedSetLogger({ exerciseId, exerciseName, entry, readiness, onReadiness, coachingEnabled = false, saving, onSave, loadHistory = getCoachHistory }: {
+export function CoachedSetLogger({ exerciseId, exerciseName, entry, readiness, onReadiness, coachingEnabled = false, saving, onSave, loadHistory = getCoachHistory, loadSavedHistory = getSavedExerciseHistory }: {
   exerciseId: string; exerciseName?: string; entry?: ProgramExercise; readiness: Readiness; onReadiness: (value: Readiness) => void;
   saving: boolean; onSave: (sets: WorkoutSet[]) => Promise<void>;
   loadHistory?: () => Promise<ExerciseExposure[]>;
+  loadSavedHistory?: typeof getSavedExerciseHistory;
   coachingEnabled?: boolean;
 }) {
   const { styles: s, colors } = useThemeStyles(themedCoachStyles);
@@ -24,6 +25,8 @@ export function CoachedSetLogger({ exerciseId, exerciseName, entry, readiness, o
     durationSeconds: entry?.target.kind === "duration" ? entry.target.seconds : null, effort: null, warmup: false, note: null });
   const [sets, setSets] = useState<WorkoutSet[]>(() => Array.from({ length: entry?.sets ?? 3 }, seed));
   const [history, setHistory] = useState<ExerciseExposure[] | null>(null);
+  const [savedHistory, setSavedHistory] = useState<ExerciseExposure[] | null>(null);
+  const [lastWeight, setLastWeight] = useState<LastSavedExerciseWeight | null>(null);
   const [recentWeight, setRecentWeight] = useState<RecentExerciseWeight | null>(null);
   const weightsEdited = useRef(new Set<number>());
   const weightPrefillRead = useRef(false);
@@ -45,23 +48,33 @@ export function CoachedSetLogger({ exerciseId, exerciseName, entry, readiness, o
     async function refresh() {
       const version = ++refreshVersion;
       setNow(new Date());
-      try { const data = await loadHistory(); if (active && version === refreshVersion) { setHistory(data); setHistoryError(""); } }
-      catch { if (active && version === refreshVersion) { setHistory(null); setHistoryError("Recent weights could not be read. You can still choose and log your weights manually."); } }
+      const reads = await Promise.allSettled([
+        Promise.resolve().then(loadHistory),
+        Promise.resolve().then(() => loadSavedHistory(exerciseId, exerciseName))
+      ]);
+      if (!active || version !== refreshVersion) return;
+      setHistory(reads[0].status === "fulfilled" ? reads[0].value : null);
+      setSavedHistory(reads[1].status === "fulfilled" ? reads[1].value : null);
+      setHistoryError(reads.some((read) => read.status === "rejected")
+        ? "Some previous weights could not be read. You can still choose and log your weights manually." : "");
     }
     void refresh();
     const app = AppState.addEventListener("change", (state) => { if (state === "active") void refresh(); });
     const timer = setInterval(() => { if (mounted.current) setNow(new Date()); }, 30000);
     return () => { active = false; mounted.current = false; app.remove(); clearInterval(timer); };
-  }, [loadHistory]);
+  }, [loadHistory, loadSavedHistory, exerciseId, exerciseName]);
 
   useEffect(() => {
-    if (history === null || weightPrefillRead.current || saving || checking) return;
+    if (history !== null && !timed) setRecentWeight(getRecentExerciseWeight(history, exerciseId, { now: Date.now(), load: entry?.load, exerciseName }));
+  }, [history, exerciseId, exerciseName, entry, timed]);
+
+  useEffect(() => {
+    if (savedHistory === null || weightPrefillRead.current || saving || checking || timed) return;
     weightPrefillRead.current = true;
-    if (timed) return;
-    const recent = getRecentExerciseWeight(history, exerciseId, { now: Date.now(), load: entry?.load, exerciseName });
-    setRecentWeight(recent);
-    if (recent) setSets((drafts) => fillUntouchedDraftWeights(drafts, recent.weight, weightsEdited.current));
-  }, [history, exerciseId, exerciseName, entry, timed, saving, checking]);
+    const last = getLastSavedExerciseWeight(savedHistory, exerciseId, { now: Date.now(), load: entry?.load, exerciseName });
+    setLastWeight(last);
+    if (last) setSets((drafts) => fillUntouchedDraftWeights(drafts, last.weight, weightsEdited.current, { replaceSeeded: true }));
+  }, [savedHistory, exerciseId, exerciseName, entry, timed, saving, checking]);
 
   useEffect(() => {
     if (applied && proposal?.key !== applied.key) {
@@ -143,7 +156,8 @@ export function CoachedSetLogger({ exerciseId, exerciseName, entry, readiness, o
           style={{ width: 44, height: 44, justifyContent: "center", alignItems: "center", opacity: disabled || sets.length === 1 ? 0.45 : 1 }}>
           <Ionicons name="close" size={20} color={colors.secondaryText} />
         </Pressable></View>
-      <WeightRuler label={`Weight lb · set ${index + 1}`} value={set.weight} disabled={disabled} onChange={(weight) => update(index, { weight })} />
+      <WeightRuler label={`Weight lb · set ${index + 1}`} value={set.weight} disabled={disabled}
+        onInteract={() => weightsEdited.current.add(index)} onChange={(weight) => update(index, { weight })} />
       <View style={[s.row, { alignItems: "flex-end" }]}>
         {!timed ? <NumberField label={`Reps · set ${index + 1}`} value={set.reps} max={100} disabled={disabled} onChange={(reps) => update(index, { reps })} /> : null}
         <CoachButton label="Warm-up" selected={!!set.warmup} disabled={disabled} onPress={() => update(index, { warmup: !set.warmup })} />
@@ -152,6 +166,7 @@ export function CoachedSetLogger({ exerciseId, exerciseName, entry, readiness, o
       <EffortSelector value={set.effort} setNumber={index + 1} disabled={disabled} onChange={(effort) => update(index, { effort })} />
       <SetNoteField value={set.note} setNumber={index + 1} disabled={disabled} onChange={(note) => updateNote(index, note)} />
     </View>)}
+    {lastWeight ? <Text style={s.copy}>Last saved: {lastWeight.weight} lb. Adjust for today's sets.</Text> : null}
     {recentWeight ? <Text style={s.copy}>Recent average: {recentWeight.weight} lb · {recentWeight.sessionCount} {recentWeight.sessionCount === 1 ? "workout" : "workouts"}. Adjust for today's sets.</Text> : null}
     {recentWeight && sets.some((set) => set.weight !== recentWeight.weight) ? <CoachButton label={`Use recent ${recentWeight.weight} lb for all sets`} disabled={disabled}
       onPress={() => {

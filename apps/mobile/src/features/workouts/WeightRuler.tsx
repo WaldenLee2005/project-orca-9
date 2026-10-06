@@ -8,9 +8,9 @@ import {
   parseWeightInput, snapWeight, stepWeight, visibleWeightTicks, weightFromDrag
 } from "./weightRulerModel";
 
-type Props = { label: string; value: number; onChange: (value: number) => void; disabled?: boolean };
+type Props = { label: string; value: number; onChange: (value: number) => void; onInteract?: () => void; disabled?: boolean };
 
-export function WeightRuler({ label, value, onChange, disabled = false }: Props) {
+export function WeightRuler({ label, value, onChange, onInteract, disabled = false }: Props) {
   const { styles: s, colors } = useThemeStyles(themedStyles);
   const position = useRef(new Animated.Value(boundedWeight(value))).current;
   const [visualWeight, setVisualWeight] = useState(boundedWeight(value));
@@ -20,8 +20,8 @@ export function WeightRuler({ label, value, onChange, disabled = false }: Props)
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
   const [focused, setFocused] = useState(false);
-  const current = useRef({ value, onChange, disabled });
-  current.current = { value, onChange, disabled };
+  const current = useRef({ value, onChange, onInteract, disabled });
+  current.current = { value, onChange, onInteract, disabled };
   const gesture = useRef({ active: false, start: 0, offset: 0, distance: 0, tick: 0 });
   const claimedDistance = useRef(0);
   const lastSent = useRef(value);
@@ -98,6 +98,7 @@ export function WeightRuler({ label, value, onChange, disabled = false }: Props)
     onMoveShouldSetPanResponder: (_, state) => claimGesture(state.dx, state.dy, state.numberActiveTouches),
     onPanResponderGrant: (_, state) => {
       if (current.current.disabled || state.numberActiveTouches !== 1) return;
+      current.current.onInteract?.();
       position.stopAnimation();
       const start = boundedWeight(current.current.value);
       // PanResponder resets dx to zero when granting ownership. Keep the
@@ -142,6 +143,9 @@ export function WeightRuler({ label, value, onChange, disabled = false }: Props)
 
   function openEditor() {
     if (current.current.disabled) return;
+    // Editing is an explicit choice even before a changed value is submitted.
+    // Let the parent protect this field from a late history prefill.
+    current.current.onInteract?.();
     finishGesture(false);
     setDraft(formatWeight(current.current.value));
     setError("");
@@ -152,6 +156,7 @@ export function WeightRuler({ label, value, onChange, disabled = false }: Props)
     if (current.current.disabled) return;
     const next = parseWeightInput(draft);
     if (next === null) { setError("Enter a weight from 0 to 10,000 lb, with up to two decimal places."); return; }
+    current.current.onInteract?.();
     position.stopAnimation();
     position.setValue(boundedWeight(next));
     sendValue(next);
@@ -160,6 +165,7 @@ export function WeightRuler({ label, value, onChange, disabled = false }: Props)
 
   function step(direction: 1 | -1, amount: 0.5 | 5 | 10 = 0.5) {
     if (current.current.disabled) return;
+    current.current.onInteract?.();
     finishGesture(false);
     const next = amount === 0.5 ? stepWeight(current.current.value, direction)
       : boundedWeight(Number((boundedWeight(current.current.value) + direction * amount).toFixed(2)));

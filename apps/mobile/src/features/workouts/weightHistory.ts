@@ -14,6 +14,17 @@ export type RecentExerciseWeight = {
   latestPerformedAt: string;
 };
 
+export type LastSavedExerciseWeight = {
+  source: "lastSaved";
+  weight: number;
+  latestPerformedAt: string;
+  sessionId: string;
+  setIndex: number;
+};
+
+type WeightHistoryOptions = { now: number; load?: ProgramLoad | null; exerciseName?: string };
+type SavedWeightExposure = ExerciseExposure & { exerciseOrder?: number };
+
 function localDay(timestamp: number): number {
   const date = new Date(timestamp);
   return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
@@ -48,11 +59,51 @@ function sameExercise(exposure: ExerciseExposure, exerciseId: string, exerciseNa
   return currentName && previousName ? currentName === previousName : exposure.exerciseId === exerciseId;
 }
 
+/** Reuse the last actual working rep set, including saved work in an unfinished session. */
+export function getLastSavedExerciseWeight(
+  history: readonly SavedWeightExposure[],
+  exerciseId: string,
+  options: WeightHistoryOptions
+): LastSavedExerciseWeight | null {
+  if (!exerciseId || !Number.isFinite(options.now) || !Number.isFinite(new Date(options.now).getTime())) return null;
+  let selected: { exposure: SavedWeightExposure; timestamp: number; setIndex: number } | null = null;
+  for (const exposure of history) {
+    if (!exposure || !sameExercise(exposure, exerciseId, options.exerciseName) || !exposure.sessionId ||
+        !compatibleLoad(options.load, exposure.prescription?.load) || !Array.isArray(exposure.actualSets)) continue;
+    const timestamp = Date.parse(exposure.performedAt);
+    if (!Number.isFinite(timestamp) || timestamp > options.now) continue;
+    let setIndex = exposure.actualSets.length - 1;
+    while (setIndex >= 0 && !validWorkingSet(exposure.actualSets[setIndex])) setIndex -= 1;
+    if (setIndex < 0) continue;
+    let newer = !selected || timestamp > selected.timestamp;
+    if (selected && timestamp === selected.timestamp) {
+      if (exposure.sessionId === selected.exposure.sessionId) {
+        // Save timestamps may share a millisecond. The persisted entry order
+        // resolves repeated lifts within that workout without guessing loads.
+        const order = Number.isInteger(exposure.exerciseOrder) ? exposure.exerciseOrder! : -1;
+        const selectedOrder = Number.isInteger(selected.exposure.exerciseOrder) ? selected.exposure.exerciseOrder! : -1;
+        newer = order > selectedOrder;
+      } else {
+        // Identical save times in different workouts have no finer chronology;
+        // use a stable session key rather than depending on incoming array order.
+        newer = exposure.sessionId < selected.exposure.sessionId;
+      }
+    }
+    if (newer) selected = { exposure, timestamp, setIndex };
+  }
+  if (!selected) return null;
+  return {
+    source: "lastSaved", weight: selected.exposure.actualSets[selected.setIndex].weight,
+    latestPerformedAt: selected.exposure.performedAt, sessionId: selected.exposure.sessionId,
+    setIndex: selected.setIndex
+  };
+}
+
 /** The repository feed contains completed sessions only; this helper never writes actual results. */
 export function getRecentExerciseWeight(
   history: readonly ExerciseExposure[],
   exerciseId: string,
-  options: { now: number; load?: ProgramLoad | null; exerciseName?: string }
+  options: WeightHistoryOptions
 ): RecentExerciseWeight | null {
   const currentDay = localDay(options.now);
   if (!exerciseId || !Number.isFinite(options.now) || !Number.isFinite(currentDay)) return null;
@@ -95,16 +146,18 @@ export function getRecentExerciseWeight(
   };
 }
 
-/** Late history reads may seed blank, untouched rows, but never overwrite manual values or clearing. */
+/** Late history reads may replace untouched seed values, but never overwrite manual values or clearing. */
 export function fillUntouchedDraftWeights<T extends { weight: number }>(
   drafts: T[],
   weight: number,
-  editedIndices: ReadonlySet<number> = new Set()
+  editedIndices: ReadonlySet<number> = new Set(),
+  options: { replaceSeeded?: boolean } = {}
 ): T[] {
   if (!Number.isFinite(weight) || weight < 0 || weight > MAX_WEIGHT) return drafts;
   let changed = false;
   const next = drafts.map((draft, index) => {
-    if (!Number.isNaN(draft.weight) || editedIndices.has(index)) return draft;
+    const validSeed = options.replaceSeeded && Number.isFinite(draft.weight) && draft.weight >= 0 && draft.weight <= MAX_WEIGHT;
+    if ((!Number.isNaN(draft.weight) && !validSeed) || editedIndices.has(index) || Object.is(draft.weight, weight)) return draft;
     changed = true;
     return { ...draft, weight };
   });

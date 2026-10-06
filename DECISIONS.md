@@ -1,5 +1,13 @@
 # Decision Log
 
+## 2026-10-05: Start Weight Entry At The Last Saved Working Set
+
+Decision: Use the exact weight of the newest saved exercise entry's final eligible working rep set as the default, including saved actual work in unfinished sessions. Keep completed-workout recent averages as an explicit shortcut. Resolve repeat entries by save time and persisted exercise order; do not expire the last saved weight after 90 days or cap its feed at 120 recent sessions.
+
+Last saved work replaces untouched program starting loads. Manual interaction—including opening exact entry, confirming the same number, clearing or copying—takes precedence over late reads. Warm-ups/timed work and incompatible load context remain excluded. Coaching still reads completed work only; storage and historical results are unchanged.
+
+Reason: The requested starting point is the last value used for that exercise. Reusing it avoids long swipes from zero. Exact decimal/zero values remain intact until the user chooses a new tick.
+
 ## 2026-10-05: Keep Continuous Weight Drags Active Across Controlled Updates
 
 Decision: Reconcile externally controlled weight changes in a synchronous layout effect. Keep live tick commits and release snapping, while placing recent-weight/copy controls below set rows and disabling browser scroll anchoring on the web logger so footer changes cannot shift a scale during a gesture.

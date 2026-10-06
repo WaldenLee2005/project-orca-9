@@ -19,7 +19,7 @@ export function normalizeWorkoutSetNote(note: unknown): string | null {
   if (normalized.length > MAX_SET_NOTE_LENGTH) throw new Error(`Keep each set note to ${MAX_SET_NOTE_LENGTH} characters or fewer.`);
   return normalized || null;
 }
-export type ExerciseExposure = { sessionId: string; performedAt: string; exerciseId: string; exerciseName?: string; actualSets: WorkoutSet[]; prescription?: ProgramExercise };
+export type ExerciseExposure = { sessionId: string; performedAt: string; exerciseId: string; exerciseName?: string; exerciseOrder?: number; actualSets: WorkoutSet[]; prescription?: ProgramExercise };
 export type StoredSessionExercise = {
   id: string;
   exercise: SessionExercise;
@@ -1184,6 +1184,75 @@ export async function getCoachHistory(): Promise<ExerciseExposure[]> {
     });
   }
   return result;
+}
+
+/** Saved actual sets from active or completed sessions; never draft program targets or private notes. */
+export async function getSavedExerciseHistory(exerciseId: string, exerciseName?: string): Promise<ExerciseExposure[]> {
+  if (typeof exerciseId !== "string" || !exerciseId) return [];
+  const custom = exerciseId.startsWith("custom-");
+  const chosenName = typeof exerciseName === "string" ? exerciseName.trim().toLowerCase() : "";
+  const matches = (id: string, name: string) => {
+    if (custom !== id.startsWith("custom-")) return false;
+    if (!custom) return id === exerciseId;
+    const savedName = name.trim().toLowerCase();
+    return chosenName && savedName ? chosenName === savedName : id === exerciseId;
+  };
+  let result: ExerciseExposure[];
+  if (Platform.OS === "web") {
+    result = (await getWebWorkoutSessions()).flatMap((session) => session.exercises.flatMap((exercise, exerciseOrder) =>
+      matches(exercise.exercise.id, exercise.exercise.name) ? [{
+        sessionId: session.id, performedAt: exercise.savedAt, exerciseId: exercise.exercise.id,
+        exerciseName: exercise.exercise.name, exerciseOrder, actualSets: getCoachSets(exercise), prescription: exercise.prescription
+      }] : []));
+  } else {
+    const database = await getDatabase();
+    type SavedWeightRow = {
+      id: string; session_id: string; exercise_id: string | null; custom_exercise_name: string | null;
+      exercise_name_snapshot: string; exercise_order: number; saved_at: string; prescription_json: string | null;
+      set_number: number; reps: number; weight: number; duration_seconds: number | null;
+      effort: WorkoutSet["effort"]; is_warmup: number;
+    };
+    // Select this catalog ID only. Custom names are matched in JavaScript so
+    // Unicode case folding agrees with web instead of SQLite's ASCII lower().
+    const rows = await database.getAllAsync<SavedWeightRow>(
+      `SELECT workout_exercises.id, workout_exercises.workout_session_id AS session_id,
+         workout_exercises.exercise_id, workout_exercises.custom_exercise_name,
+         workout_exercises.exercise_name_snapshot, workout_exercises.exercise_order,
+         workout_exercises.saved_at, workout_exercises.prescription_json,
+         set_entries.set_number, set_entries.reps, set_entries.weight,
+         set_entries.duration_seconds, set_entries.effort, set_entries.is_warmup
+       FROM workout_exercises
+       INNER JOIN workout_sessions ON workout_sessions.id = workout_exercises.workout_session_id
+       INNER JOIN set_entries ON set_entries.workout_exercise_id = workout_exercises.id
+       WHERE ${custom ? "workout_exercises.exercise_id IS NULL" : "workout_exercises.exercise_id = ?"}
+       ORDER BY workout_exercises.saved_at DESC, workout_exercises.workout_session_id ASC,
+         workout_exercises.exercise_order DESC, workout_exercises.id ASC, set_entries.set_number ASC;`,
+      custom ? [] : [exerciseId]
+    );
+    const entries = new Map<string, ExerciseExposure>();
+    for (const row of rows) {
+      const id = row.exercise_id ?? `custom-${row.id}`;
+      const name = row.custom_exercise_name ?? row.exercise_name_snapshot;
+      if (!matches(id, name)) continue;
+      let entry = entries.get(row.id);
+      if (!entry) {
+        entry = {
+          sessionId: row.session_id, performedAt: row.saved_at, exerciseId: id, exerciseName: name,
+          exerciseOrder: row.exercise_order, actualSets: [],
+          ...(row.prescription_json ? { prescription: JSON.parse(row.prescription_json) as ProgramExercise } : {})
+        };
+        entries.set(row.id, entry);
+      }
+      entry.actualSets.push({ reps: row.reps, weight: row.weight, durationSeconds: row.duration_seconds,
+        effort: row.effort, warmup: Boolean(row.is_warmup) });
+    }
+    result = [...entries.values()];
+  }
+  return result.sort((a, b) => {
+    const savedOrder = Date.parse(b.performedAt) - Date.parse(a.performedAt);
+    if (Number.isFinite(savedOrder) && savedOrder !== 0) return savedOrder;
+    return a.sessionId === b.sessionId ? (b.exerciseOrder ?? -1) - (a.exerciseOrder ?? -1) : a.sessionId.localeCompare(b.sessionId);
+  });
 }
 
 function getCoachSets(exercise: StoredSessionExercise): WorkoutSet[] {

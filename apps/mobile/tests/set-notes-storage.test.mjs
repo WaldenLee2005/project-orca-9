@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
-import { getRecentExerciseWeight } from "../src/features/workouts/weightHistory.ts";
+import { getLastSavedExerciseWeight, getRecentExerciseWeight } from "../src/features/workouts/weightHistory.ts";
 
 // Run the real workout repository against isolated web storage and SQLite, never device data.
 const state = { platform: { OS: "web" }, values: new Map(), sql: null, nextId: 0, failWrite: false };
@@ -62,6 +62,29 @@ const add = (sessionId, actualSets, extra = {}) => workouts.addExerciseToWorkout
   durationSeconds: actualSets[0].durationSeconds, actualSets, ...extra
 });
 const measurements = (sets) => sets.map(({ note, ...set }) => set);
+function savedAt(entryId, timestamp) {
+  if (state.platform.OS === "web") {
+    const sessions = JSON.parse(state.values.get(key));
+    for (const session of sessions) {
+      const entry = session.exercises.find((exercise) => exercise.id === entryId);
+      if (entry) entry.savedAt = timestamp;
+    }
+    state.values.set(key, JSON.stringify(sessions));
+  } else state.sql.prepare("UPDATE workout_exercises SET saved_at = ? WHERE id = ?").run(timestamp, entryId);
+}
+function sessionDates(sessionId, startedAt, completedAt) {
+  if (state.platform.OS === "web") {
+    const sessions = JSON.parse(state.values.get(key));
+    const session = sessions.find((session) => session.id === sessionId);
+    session.startedAt = startedAt; session.completedAt = completedAt;
+    state.values.set(key, JSON.stringify(sessions));
+  } else state.sql.prepare("UPDATE workout_sessions SET started_at = ?, completed_at = ? WHERE id = ?").run(startedAt, completedAt, sessionId);
+}
+function storedWork() {
+  return state.platform.OS === "web" ? state.values.get(key) : Object.fromEntries(
+    ["workout_sessions", "workout_exercises", "set_entries"].map((table) => [table, state.sql.prepare(`SELECT * FROM ${table}`).all()])
+  );
+}
 
 test("set notes accept omission, blank, multiline and Unicode text with bounded normalization", () => {
   for (const note of [undefined, null, "", " \n\t "]) assert.equal(workouts.normalizeWorkoutSetNote(note), null);
@@ -78,7 +101,7 @@ for (const platform of ["web", "ios"]) {
     await add(session.id, [{ weight: 135, reps: 8, note: "Private custom note" }], {
       exercise: { ...exercise, id: "custom-first-selection", name: "  My Bench Press  " }
     });
-    assert.deepEqual(await workouts.getCoachHistory(), [], "unfinished sessions never become weight baselines");
+    assert.deepEqual(await workouts.getCoachHistory(), [], "unfinished sessions never enter completed coaching/average history");
     await workouts.completeWorkoutSession(session.id);
     const history = await workouts.getCoachHistory();
     assert.equal(history.length, 2);
@@ -91,6 +114,93 @@ for (const platform of ["web", "ios"]) {
     assert.equal(getRecentExerciseWeight(history, "custom-second-selection", {
       now: Date.now(), exerciseName: "my bench press"
     }).weight, 135, "a new custom selection reuses only that custom lift's measured weight");
+  });
+
+  test(`${platform}: saved-weight history includes active actual sets with chronological ties and leaves coach history completed-only`, async (t) => {
+    setup(t, platform);
+    const completed = await workouts.createWorkoutSession();
+    const old = await add(completed.id, [{ weight: 100, reps: 8, note: "Private older note" }]);
+    await workouts.completeWorkoutSession(completed.id);
+    savedAt(old.id, "2026-09-01T10:00:00.000Z");
+    sessionDates(completed.id, "2026-09-01T09:00:00.000Z", "2026-10-04T20:00:00.000Z");
+    const active = await workouts.createWorkoutSession();
+    assert.equal((await workouts.getSavedExerciseHistory("bench")).length, 1, "empty active plan/session adds no actual measurement");
+    const first = await add(active.id, [{ weight: 120, reps: 8 }]);
+    const prescription = { id: "plan-bench", exerciseId: "bench", exerciseName: "Bench Press", sets: 3,
+      target: { kind: "reps", reps: 8 }, load: { unit: "lb", weight: 50, increment: 5, convention: "total", equipmentKey: "Barbell" } };
+    const latest = await add(active.id, [
+      { weight: 135, reps: 8, note: "Private working note" },
+      { weight: 12.25, reps: 6, effort: "hard" },
+      { weight: 20, reps: 10, warmup: true, note: "Private warm-up note" }
+    ], { prescription });
+    savedAt(first.id, "2026-10-05T10:00:00.000Z");
+    savedAt(latest.id, "2026-10-05T10:00:00.000Z");
+    sessionDates(active.id, "2026-01-01T09:00:00.000Z", null);
+    const before = storedWork();
+    const saved = await workouts.getSavedExerciseHistory("bench");
+    assert.deepEqual(saved.map((entry) => entry.actualSets.map((set) => set.weight)), [[135, 12.25, 20], [120], [100]]);
+    assert.ok(saved[0].exerciseOrder > saved[1].exerciseOrder, "later exercise order breaks equal save timestamps");
+    assert.equal(saved[0].sessionId, active.id, "an old-start active session's new save stays latest");
+    assert.deepEqual(saved[0].prescription, prescription);
+    assert.equal(saved.some((entry) => entry.actualSets.some((set) => "note" in set)), false);
+    assert.equal(getLastSavedExerciseWeight(saved, "bench", { now: Date.parse("2026-10-06T12:00:00Z"), load: prescription.load }).weight, 12.25,
+      "last working set retains its exact decimal, skipping the trailing warm-up");
+    const coached = await workouts.getCoachHistory();
+    assert.deepEqual(coached.map((entry) => entry.sessionId), [completed.id]);
+    await workouts.updateWorkoutSetNote(old.id, 1, "Edited now, still an old measurement");
+    assert.deepEqual(await workouts.getSavedExerciseHistory("bench"), saved, "note updates do not change save-time ordering or measurements");
+    const afterNote = storedWork();
+    await workouts.getSavedExerciseHistory("bench");
+    assert.deepEqual(storedWork(), afterNote, "saved-weight reads never alter stored results");
+    assert.notDeepEqual(afterNote, before, "the explicit note update was persisted independently");
+    await workouts.deleteWorkoutExercise(latest.id);
+    assert.equal((await workouts.getSavedExerciseHistory("bench"))[0].actualSets[0].weight, 120, "deleted actual entries stop supplying weights");
+  });
+
+  test(`${platform}: custom saved weights match Unicode names across IDs and remain separate from catalog lifts`, async (t) => {
+    setup(t, platform);
+    const session = await workouts.createWorkoutSession();
+    await add(session.id, [{ weight: 500, reps: 8 }], { exercise: { ...exercise, name: "ŽELEZO 🐋" } });
+    await add(session.id, [{ weight: 100, reps: 8 }], { exercise: { ...exercise, id: "custom-first", name: "  Železo 🐋  " } });
+    const matching = await add(session.id, [{ weight: 0, reps: 10, note: "Private custom note" }], { exercise: { ...exercise, id: "custom-second", name: "ŽELEZO 🐋" } });
+    await add(session.id, [{ weight: 400, reps: 8 }], { exercise: { ...exercise, id: "custom-other", name: "Other Lift" } });
+    const custom = await workouts.getSavedExerciseHistory("custom-new-selection", "železo 🐋");
+    assert.equal(custom.length, 2);
+    assert.ok(custom.every((entry) => entry.exerciseId.startsWith("custom-")));
+    assert.equal(custom.some((entry) => entry.actualSets.some((set) => "note" in set)), false);
+    assert.equal(getLastSavedExerciseWeight(custom, "custom-new-selection", { now: Date.now(), exerciseName: "ŽELEZO 🐋" }).weight, 0);
+    const stored = (await workouts.getWorkoutSessionExercises(session.id)).find((entry) => entry.id === matching.id);
+    assert.equal((await workouts.getSavedExerciseHistory(stored.exercise.id))[0].actualSets[0].weight, 0, "unnamed request falls back to exact projected ID");
+    assert.deepEqual(await workouts.getSavedExerciseHistory("custom-unmatched", "Different Lift"), []);
+    assert.equal((await workouts.getSavedExerciseHistory("bench", "ŽELEZO 🐋"))[0].actualSets[0].weight, 500);
+    assert.deepEqual(await workouts.getCoachHistory(), []);
+    if (platform !== "web") {
+      const normalRead = state.database.getAllAsync;
+      let reads = 0;
+      state.database.getAllAsync = async (...args) => { reads++; return normalRead(...args); };
+      try { await workouts.getSavedExerciseHistory("custom-new-selection", "ŽELEZO 🐋"); assert.equal(reads, 1, "native loads matching custom sets in one batch"); }
+      finally { state.database.getAllAsync = normalRead; }
+    }
+  });
+
+  test(`${platform}: a long-unused lift stays available beyond the coach feed's age/session horizon`, async (t) => {
+    setup(t, platform);
+    const old = await workouts.createWorkoutSession();
+    const recorded = await add(old.id, [{ weight: 135, reps: 8 }]);
+    await workouts.completeWorkoutSession(old.id);
+    savedAt(recorded.id, "2020-01-01T10:00:00.000Z");
+    sessionDates(old.id, "2020-01-01T09:00:00.000Z", "2020-01-01T11:00:00.000Z");
+    for (let index = 0; index < 121; index++) {
+      const unrelated = await workouts.createWorkoutSession();
+      await add(unrelated.id, [{ weight: 50, reps: 8 }], { exercise: { ...exercise, id: "other-catalog", name: "Other Catalog Lift" } });
+      await workouts.completeWorkoutSession(unrelated.id);
+    }
+    assert.equal((await workouts.getCoachHistory()).some((entry) => entry.exerciseId === "bench"), false);
+    const saved = await workouts.getSavedExerciseHistory("bench");
+    assert.equal(saved.length, 1);
+    assert.equal(getLastSavedExerciseWeight(saved, "bench", { now: Date.now() }).weight, 135,
+      "last saved weight is not limited to recent completed sessions");
+    assert.equal(getRecentExerciseWeight(saved, "bench", { now: Date.now() }), null, "optional average retains its 90-day horizon");
   });
 
   test(`${platform}: optional per-set notes survive save, reload, completed review, edit and clear without altering work`, async (t) => {

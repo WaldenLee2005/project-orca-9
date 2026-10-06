@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import * as model from "../src/features/workouts/weightRulerModel.ts";
+import { fillUntouchedDraftWeights } from "../src/features/workouts/weightHistory.ts";
 
 const require = createRequire(import.meta.url);
 const { transformSync } = require("@babel/core");
@@ -43,7 +44,12 @@ function mountRuler(value = NaN, disabled = false) {
   let delayPassiveEffects = false;
   let tree;
   const changes = [];
-  const props = { label: "Weight", value, disabled, onChange(next) { changes.push(next); props.value = next; dirty = true; } };
+  const interactions = [];
+  const events = [];
+  const props = { label: "Weight", value, disabled,
+    onInteract() { interactions.push(props.value); events.push(["interact", props.value]); },
+    onChange(next) { changes.push(next); events.push(["change", next]); props.value = next; dirty = true; }
+  };
   function scheduleEffect(effect, dependencies, queue) {
     const slot = index++;
     if (!slots[slot] || dependencies.some((value, i) => !Object.is(value, slots[slot].dependencies[i]))) {
@@ -110,7 +116,7 @@ function mountRuler(value = NaN, disabled = false) {
   }
   render();
   return {
-    changes, props,
+    changes, interactions, events, props,
     event(action) {
       const result = action();
       // React may process a native event before flushing passive work from
@@ -124,6 +130,9 @@ function mountRuler(value = NaN, disabled = false) {
     handlers() { return find((node) => typeof node.props?.onMoveShouldSetResponderCapture === "function").props; },
     display() { return find((node) => node.type === "Text" && (node.props.children === "Select weight" || /^\d+(\.\d+)? lb$/.test(node.props.children))).props.children; },
     button(label) { return find((node) => node.type === "Pressable" && node.props.accessibilityLabel === label).props; },
+    dialogAction(label) { return find((node) => node.type === "Pressable" && node.props.children?.type === "Text" && node.props.children.props.children === label).props; },
+    input() { return find((node) => node.type === "TextInput" && node.props.accessibilityLabel === "Exact Weight").props; },
+    editorVisible() { return find((node) => node.type === "Modal").props.visible; },
     position() { return slots.find((slot) => slot?.current instanceof AnimatedValue).current.value; }
   };
 }
@@ -139,9 +148,9 @@ function finger(ruler) {
   }
   ruler.event(() => handlers.onStartShouldSetResponderCapture(event()));
   return {
-    claim(dx, dy = 0) {
+    claim(dx, dy = 0, touches = 1) {
       this.coordinates(dx, dy);
-      return ruler.event(() => handlers.onMoveShouldSetResponderCapture(event()) || handlers.onMoveShouldSetResponder(event()));
+      return ruler.event(() => handlers.onMoveShouldSetResponderCapture(event(touches)) || handlers.onMoveShouldSetResponder(event(touches)));
     },
     coordinates(dx, dy = 0) {
       time += 16;
@@ -292,4 +301,81 @@ test("large quick steps retain exact decimals, bounds and disabled state", () =>
   ruler.update({ disabled: true });
   ruler.event(() => ruler.button("Increase Weight by 10 pounds").onPress());
   assert.equal(ruler.props.value, 0);
+});
+
+test("confirming an unchanged exact weight or an already blank field still records manual intent", () => {
+  for (const initial of [135, NaN]) {
+    const ruler = mountRuler(initial);
+    const edited = new Set();
+    const recordInteraction = ruler.props.onInteract;
+    ruler.update({ onInteract: () => { recordInteraction(); edited.add(0); } });
+    assert.deepEqual(ruler.interactions, [], "mounting and callback updates are not interactions");
+    ruler.event(() => ruler.button("Enter exact Weight").onPress());
+    assert.equal(ruler.interactions.length, 1, "opening the editor protects the field immediately");
+    ruler.event(() => ruler.input().onChangeText(Number.isNaN(initial) ? "" : "135"));
+    ruler.event(() => ruler.dialogAction("Done").onPress());
+    assert.equal(ruler.interactions.length, 2, "valid same-value Done remains an explicit choice");
+    assert.deepEqual(ruler.changes, [], "onChange still deduplicates unchanged values, including NaN");
+    assert.equal(ruler.editorVisible(), false);
+    const drafts = [{ weight: ruler.props.value }];
+    assert.equal(fillUntouchedDraftWeights(drafts, 140, edited, { replaceSeeded: true }), drafts,
+      "late history does not overwrite the unchanged or explicitly cleared choice");
+  }
+});
+
+test("opening exact entry protects a seeded weight and its open dialog from late saved-weight prefill", () => {
+  const ruler = mountRuler(50);
+  const edited = new Set();
+  const recordInteraction = ruler.props.onInteract;
+  ruler.update({ onInteract: () => { recordInteraction(); edited.add(0); } });
+  ruler.event(() => ruler.button("Enter exact Weight").onPress());
+  assert.equal(ruler.editorVisible(), true);
+  const drafts = [{ weight: 50, reps: 8 }, { weight: 50, reps: 8 }];
+  const filled = fillUntouchedDraftWeights(drafts, 135, edited, { replaceSeeded: true });
+  assert.equal(filled[0], drafts[0], "the open editor's field is already marked as manual");
+  assert.equal(filled[1].weight, 135, "untouched neighboring seeds can still receive saved weight");
+  ruler.update({ value: filled[0].weight });
+  assert.equal(ruler.editorVisible(), true, "the parent history render does not close the editor");
+  assert.equal(ruler.input().value, "50");
+  assert.deepEqual(ruler.changes, []);
+  ruler.event(() => ruler.input().onChangeText("55"));
+  ruler.event(() => ruler.dialogAction("Done").onPress());
+  assert.equal(ruler.props.value, 55);
+  assert.deepEqual(ruler.events, [["interact", 50], ["interact", 50], ["change", 55]],
+    "manual intent is reported before the changed value");
+});
+
+test("only enabled horizontal grants, explicit steps and valid exact actions report interaction", () => {
+  const ruler = mountRuler(135);
+  ruler.update({ value: 140 });
+  assert.equal(finger(ruler).claim(2, 40), false);
+  assert.equal(finger(ruler).claim(-24, 0, 2), false);
+  assert.deepEqual(ruler.interactions, [], "controlled updates, vertical scroll and multitouch stay silent");
+  ruler.update({ disabled: true });
+  ruler.event(() => ruler.button("Enter exact Weight").onPress());
+  ruler.event(() => ruler.button("Increase Weight by 10 pounds").onPress());
+  ruler.event(() => ruler.input().onSubmitEditing());
+  const disabledDrag = finger(ruler);
+  assert.equal(disabledDrag.claim(-24), false);
+  disabledDrag.grant(); disabledDrag.release();
+  assert.deepEqual(ruler.interactions, []);
+  ruler.update({ disabled: false });
+  const drag = finger(ruler);
+  assert.equal(drag.claim(-8), true);
+  drag.grant(); drag.move(-8); drag.release();
+  assert.deepEqual(ruler.events, [["interact", 140], ["change", 140.5], ["change", 141]],
+    "one accepted gesture reports intent before any live ticks");
+
+  const boundary = mountRuler(0);
+  boundary.event(() => boundary.button("Decrease Weight by 5 pounds").onPress());
+  assert.deepEqual(boundary.interactions, [0], "a clamped explicit step is still a manual choice");
+  assert.deepEqual(boundary.changes, []);
+
+  const invalid = mountRuler(135);
+  invalid.event(() => invalid.button("Enter exact Weight").onPress());
+  invalid.event(() => invalid.input().onChangeText("-1"));
+  invalid.event(() => invalid.dialogAction("Done").onPress());
+  assert.deepEqual(invalid.interactions, [135], "invalid Done adds no interaction beyond opening the editor");
+  assert.deepEqual(invalid.changes, []);
+  assert.equal(invalid.editorVisible(), true);
 });
