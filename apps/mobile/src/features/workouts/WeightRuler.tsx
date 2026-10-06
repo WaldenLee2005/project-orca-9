@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Animated, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, Text, TextInput, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { createThemedStyles } from "../../theme/designSystem";
@@ -126,9 +126,10 @@ export function WeightRuler({ label, value, onChange, disabled = false }: Props)
     return () => { position.removeListener(listener); position.stopAnimation(); };
   }, [position]);
 
-  useEffect(() => {
-    // Coach apply/undo and other controlled updates cancel stale gestures. Own
-    // commits keep their brief snap animation; mounting never emits a value.
+  useLayoutEffect(() => {
+    // Reconcile before the next native event. A passive effect from the prior
+    // tick can otherwise mistake a newer own selection for an external edit
+    // and cancel a continuous drag. Coach apply/undo still cancels stale work.
     if (!Object.is(value, lastSent.current) || disabled) {
       gesture.current.active = false;
       setDragging(false);

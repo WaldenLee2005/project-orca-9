@@ -131,7 +131,7 @@ Current progress:
 - Save Session completes the workout in SQLite for future progress/history views.
 - The Session start screen lists recent completed sessions.
 - The live logger uses a swipeable weight ruler with 0.5 lb snapping, sized 0.5/1/5/10 lb ticks and native haptics; exact entry and reps/time steppers remain. Effort fits in one segmented row.
-- Touch gesture regression fixes preserve short drags and selections during scrolling handoffs. Recent actual working weights prefill from the last three eligible completed workouts; ±5/±10 lb controls and first-weight copying avoid repeated long swipes. Existing results and manual choices stay intact.
+- Touch gesture regressions cover short and continuous drags, direction changes, delayed render effects and scrolling handoffs; dynamic shortcuts no longer shift set rows. Recent actual working weights prefill from the last three eligible completed workouts; ±5/±10 lb controls and first-weight copying avoid repeated long swipes. Existing results and manual choices stay intact.
 - Program/session coaching is controlled globally, with persisted session overrides and retained legacy load metadata. Native haptic feel and rebuilt-device accessibility checks remain part of phone acceptance.
 - Nonempty unfinished sessions pause/resume; empty-session exit creates no workout or streak credit.
 - Swipe-to-delete is available for saved exercise rows.

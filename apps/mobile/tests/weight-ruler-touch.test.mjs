@@ -38,10 +38,19 @@ function mountRuler(value = NaN, disabled = false) {
   const slots = [];
   let index = 0;
   let dirty = false;
-  let effects = [];
+  let layoutEffects = [];
+  let passiveEffects = [];
+  let delayPassiveEffects = false;
   let tree;
   const changes = [];
   const props = { label: "Weight", value, disabled, onChange(next) { changes.push(next); props.value = next; dirty = true; } };
+  function scheduleEffect(effect, dependencies, queue) {
+    const slot = index++;
+    if (!slots[slot] || dependencies.some((value, i) => !Object.is(value, slots[slot].dependencies[i]))) {
+      slots[slot] = { dependencies, cleanup: slots[slot]?.cleanup };
+      queue.push(() => { slots[slot].cleanup?.(); slots[slot].cleanup = effect(); });
+    }
+  }
   const hooks = {
     useRef(initial) { const slot = index++; return slots[slot] ??= { current: initial }; },
     useState(initial) {
@@ -52,12 +61,8 @@ function mountRuler(value = NaN, disabled = false) {
         if (!Object.is(value, slots[slot].value)) { slots[slot].value = value; dirty = true; }
       }];
     },
-    useEffect(effect, dependencies) {
-      const slot = index++;
-      if (!slots[slot] || dependencies.some((value, i) => !Object.is(value, slots[slot].dependencies[i]))) {
-        effects.push(() => { slots[slot]?.cleanup?.(); slots[slot] = { dependencies, cleanup: effect() }; });
-      }
-    }
+    useEffect(effect, dependencies) { scheduleEffect(effect, dependencies, passiveEffects); },
+    useLayoutEffect(effect, dependencies) { scheduleEffect(effect, dependencies, layoutEffects); }
   };
   const native = {
     Animated: { Value: AnimatedValue, timing: (position, { toValue }) => ({ start: () => position.setValue(toValue) }) },
@@ -79,13 +84,19 @@ function mountRuler(value = NaN, disabled = false) {
     require("@babel/plugin-transform-modules-commonjs")
   ] }, (name) => mocks[name] ?? require(name));
 
+  function flushPassiveEffects() {
+    const pending = passiveEffects;
+    passiveEffects = [];
+    for (const effect of pending) effect();
+  }
   function render() {
     let passes = 0;
     do {
       assert.ok(passes++ < 10, "component updates settle");
-      dirty = false; index = 0; effects = [];
+      dirty = false; index = 0; layoutEffects = [];
       tree = WeightRuler(props);
-      for (const effect of effects) effect();
+      for (const effect of layoutEffects) effect();
+      if (!delayPassiveEffects) flushPassiveEffects();
     } while (dirty);
   }
   function find(predicate, node = tree) {
@@ -100,7 +111,15 @@ function mountRuler(value = NaN, disabled = false) {
   render();
   return {
     changes, props,
-    event(action) { const result = action(); render(); return result; },
+    event(action) {
+      const result = action();
+      // React may process a native event before flushing passive work from
+      // the prior render, then flush that work before the next render.
+      if (delayPassiveEffects) flushPassiveEffects();
+      render();
+      return result;
+    },
+    delayEffects() { delayPassiveEffects = true; },
     update(next) { Object.assign(props, next); render(); },
     handlers() { return find((node) => typeof node.props?.onMoveShouldSetResponderCapture === "function").props; },
     display() { return find((node) => node.type === "Text" && (node.props.children === "Select weight" || /^\d+(\.\d+)? lb$/.test(node.props.children))).props.children; },
@@ -129,8 +148,17 @@ function finger(ruler) {
       record = { ...record, previousPageX: x, previousPageY: y, previousTimeStamp: record.currentTimeStamp,
         currentPageX: x += dx, currentPageY: y += dy, currentTimeStamp: time };
     },
-    grant() { ruler.event(() => handlers.onResponderGrant(event())); },
-    move(dx, dy = 0) { this.coordinates(dx, dy); ruler.event(() => handlers.onResponderMove(event())); },
+    grant() {
+      // The native move that grants ownership is also dispatched as a move.
+      // PanResponder suppresses that duplicate timestamp after its capture.
+      ruler.event(() => { handlers.onResponderGrant(event()); handlers.onResponderMove(event()); });
+    },
+    move(dx, dy = 0) {
+      this.coordinates(dx, dy);
+      // Fabric's responder negotiation skips the current owner in capture;
+      // ancestor negotiation is followed by this owner's move callback.
+      ruler.event(() => handlers.onResponderMove(event()));
+    },
     terminationRequested() { return ruler.event(() => handlers.onResponderTerminationRequest(event())); },
     terminate() { ruler.event(() => handlers.onResponderTerminate(event())); },
     release() {
@@ -173,6 +201,23 @@ test("native long and repeated drags retain controlled updates and their origina
   assert.equal(ruler.display(), "140 lb");
 });
 
+test("continuous native drags survive passive effects from the preceding tick render", () => {
+  const ruler = mountRuler(135);
+  ruler.delayEffects();
+  const drag = finger(ruler);
+  assert.equal(drag.claim(-8), true);
+  drag.grant();
+  for (const [distance, expected] of [[-8, 136], [-8, 136.5], [-8, 137], [8, 136.5], [8, 136], [-16, 137], [-8, 137.5]]) {
+    drag.move(distance);
+    assert.equal(ruler.props.value, expected, "every movement and reversal remains part of the same drag");
+    assert.equal(ruler.position(), ruler.props.value, "a stale effect cannot snap back the displayed scale");
+  }
+  drag.release();
+  assert.equal(ruler.props.value, 137.5);
+  assert.equal(ruler.display(), "137.5 lb");
+  assert.deepEqual(ruler.changes, [135.5, 136, 136.5, 137, 136.5, 136, 137, 137.5]);
+});
+
 test("ScrollView takeover is refused and forced native termination retains the selected tick", () => {
   const ruler = mountRuler();
   const drag = finger(ruler);
@@ -208,15 +253,19 @@ test("vertical gestures, disabled rulers and added fingers cannot change weight"
 
 test("external coaching values and disabled updates cancel an in-flight drag", () => {
   for (const update of [{ value: 150 }, { disabled: true }]) {
-    const ruler = mountRuler(135);
-    const drag = finger(ruler);
-    assert.equal(drag.claim(-8), true);
-    drag.grant();
-    ruler.update(update);
-    const expected = ruler.props.value;
-    drag.move(-80); drag.release();
-    assert.equal(ruler.props.value, expected);
-    assert.equal(ruler.position(), expected);
+    for (const delayed of [false, true]) {
+      const ruler = mountRuler(135);
+      if (delayed) ruler.delayEffects();
+      const drag = finger(ruler);
+      assert.equal(drag.claim(-8), true);
+      drag.grant();
+      ruler.update(update);
+      const expected = ruler.props.value;
+      drag.move(-80); drag.release();
+      assert.equal(ruler.props.value, expected);
+      assert.equal(ruler.position(), expected);
+      assert.deepEqual(ruler.changes, [135.5], "a stale native move cannot overwrite a controlled edit");
+    }
   }
 });
 

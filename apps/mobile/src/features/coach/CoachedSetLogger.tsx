@@ -134,20 +134,6 @@ export function CoachedSetLogger({ exerciseId, exerciseName, entry, readiness, o
     </View> : null}
     <Text style={s.title}>Record each completed set</Text>
     <Text style={s.copy}>Swipe the weight scale or tap the value to type. Remove sets you did not complete. Use 0 lb for no external load.</Text>
-    {recentWeight ? <Text style={s.copy}>Recent average: {recentWeight.weight} lb · {recentWeight.sessionCount} {recentWeight.sessionCount === 1 ? "workout" : "workouts"}. Adjust for today's sets.</Text> : null}
-    {recentWeight && sets.some((set) => set.weight !== recentWeight.weight) ? <CoachButton label={`Use recent ${recentWeight.weight} lb for all sets`} disabled={disabled}
-      onPress={() => {
-        weightsEdited.current = new Set(sets.map((_, index) => index));
-        edit(sets.map((set) => ({ ...set, weight: recentWeight.weight })));
-      }} /> : null}
-    {sets.some((set) => !Number.isFinite(set.weight)) ? <View style={{ gap: 6 }}>
-      {!recentWeight && !Number.isFinite(sets[0]?.weight) ? <Text style={s.copy}>First time logging this lift? Tap Select weight to enter a starting weight.</Text> : null}
-      {Number.isFinite(sets[0]?.weight) ? <CoachButton label={`Use ${sets[0].weight} lb for empty sets`} disabled={disabled}
-        onPress={() => {
-          sets.forEach((set, index) => { if (!Number.isFinite(set.weight)) weightsEdited.current.add(index); });
-          edit(sets.map((set) => Number.isFinite(set.weight) ? set : { ...set, weight: sets[0].weight }));
-        }} /> : null}
-    </View> : null}
     {!entry ? <View style={s.row}>{[false, true].map((value) => <CoachButton key={String(value)} label={value ? "Timed" : "Reps"} selected={timed === value} disabled={disabled}
       onPress={() => { setTimed(value); edit(sets.map((set) => ({ ...set, reps: value ? 0 : 8, durationSeconds: value ? 45 : null }))); }} />)}</View> : null}
     {sets.map((set, index) => <View key={index} style={[s.card, { marginVertical: 0, padding: 16, gap: 12 }]}>
@@ -166,6 +152,20 @@ export function CoachedSetLogger({ exerciseId, exerciseName, entry, readiness, o
       <EffortSelector value={set.effort} setNumber={index + 1} disabled={disabled} onChange={(effort) => update(index, { effort })} />
       <SetNoteField value={set.note} setNumber={index + 1} disabled={disabled} onChange={(note) => updateNote(index, note)} />
     </View>)}
+    {recentWeight ? <Text style={s.copy}>Recent average: {recentWeight.weight} lb · {recentWeight.sessionCount} {recentWeight.sessionCount === 1 ? "workout" : "workouts"}. Adjust for today's sets.</Text> : null}
+    {recentWeight && sets.some((set) => set.weight !== recentWeight.weight) ? <CoachButton label={`Use recent ${recentWeight.weight} lb for all sets`} disabled={disabled}
+      onPress={() => {
+        weightsEdited.current = new Set(sets.map((_, index) => index));
+        edit(sets.map((set) => ({ ...set, weight: recentWeight.weight })));
+      }} /> : null}
+    {sets.some((set) => !Number.isFinite(set.weight)) ? <View style={{ gap: 6 }}>
+      {!recentWeight && !Number.isFinite(sets[0]?.weight) ? <Text style={s.copy}>First time logging this lift? Tap Select weight to enter a starting weight.</Text> : null}
+      {Number.isFinite(sets[0]?.weight) ? <CoachButton label={`Use ${sets[0].weight} lb for empty sets`} disabled={disabled}
+        onPress={() => {
+          sets.forEach((set, index) => { if (!Number.isFinite(set.weight)) weightsEdited.current.add(index); });
+          edit(sets.map((set) => Number.isFinite(set.weight) ? set : { ...set, weight: sets[0].weight }));
+        }} /> : null}
+    </View> : null}
     <CoachButton label="Add set (copy last values)" disabled={disabled || sets.length >= 12} onPress={() => edit([...sets, { ...sets[sets.length - 1], effort: null, note: null }])} />
     {notice ? <Text accessibilityLiveRegion="polite" style={s.copy}>{notice}</Text> : null}
     {historyError ? <Text accessibilityRole="alert" style={s.error}>{historyError}</Text> : null}

@@ -1,5 +1,11 @@
 # Decision Log
 
+## 2026-10-05: Keep Continuous Weight Drags Active Across Controlled Updates
+
+Decision: Reconcile externally controlled weight changes in a synchronous layout effect. Keep live tick commits and release snapping, while placing recent-weight/copy controls below set rows and disabling browser scroll anchoring on the web logger so footer changes cannot shift a scale during a gesture.
+
+Reason: A previous tick's delayed passive effect could compare against a newer emitted tick and falsely cancel the drag. Existing tests flushed effects immediately and missed that ordering. Native regressions now interleave delayed effects with successive moves; phone checks hold a finger down through movement, pauses and reversals. Storage, recent averages and exact-entry behavior are unchanged.
+
 ## 2026-10-05: Retain Touch Selections And Start Weight Entry Near Recent Actual Work
 
 Decision: Capture horizontal ruler gestures before scrolling, retain the initial displacement that React Native resets on grant, and preserve selected ticks through interruption. Add ±5/±10 lb controls while keeping 0.5 lb snapping.

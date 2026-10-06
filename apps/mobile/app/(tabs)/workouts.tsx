@@ -760,7 +760,10 @@ export default function WorkoutsScreen() {
   if (step === "logger" && selectedExercise) {
     return (
       <ScrollView
-        style={[styles.screen, { backgroundColor: theme.colors.background }]}
+        style={[styles.screen, { backgroundColor: theme.colors.background,
+          // Footer shortcuts must not re-anchor a scale under an active finger.
+          ...(Platform.OS === "web" ? { overflowAnchor: "none" as const } : {})
+        }]}
         contentContainerStyle={styles.loggerContent}
         keyboardShouldPersistTaps="handled"
       >
