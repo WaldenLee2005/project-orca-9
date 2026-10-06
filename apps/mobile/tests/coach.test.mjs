@@ -69,6 +69,27 @@ test("new, timed, unsupported units, no equipment confirmation and excessively l
   assert.equal(run(undefined, { readiness: { ...readiness, sameEquipment: false } }).canApply, false);
   assert.notEqual(run(undefined, { entry: { ...entry, load: { ...entry.load, increment: 50 } } }).reason, "progress");
 });
+test("program coaching without old load settings offers only bounded sets reductions and never invents weights", () => {
+  const manual = { ...entry, load: undefined };
+  assert.equal(run([], { entry: manual }).reason, "calibrate");
+  for (const feedback of [{ ...readiness, lighter: true }, { ...readiness, feeling: "low" }]) {
+    const proposal = run([], { entry: manual, readiness: feedback });
+    assert.equal(proposal.canApply, true);
+    assert.equal(proposal.weight, null);
+    assert.equal(proposal.sets, 2);
+    assert.notEqual(proposal.reason, "progress");
+  }
+  assert.equal(run([], { entry: { ...manual, sets: 1 }, readiness: { ...readiness, lighter: true } }).canApply, false, "never reduces below one set");
+  assert.equal(run(undefined, { entry: manual }).weight, null, "even successful history does not invent equipment or load meaning");
+  assert.equal(run(undefined, { entry: manual, readiness: { ...readiness, feeling: "concern", lighter: true } }).canApply, false);
+  for (const gap of ["unknown", "elsewhere"]) assert.equal(run([exposure(21)], { entry: manual, readiness: { ...readiness, gap, lighter: true } }).canApply, false);
+  const returning = run([exposure(21)], { entry: manual, readiness: { ...readiness, gap: "break" } });
+  assert.equal(returning.reason, "return");
+  assert.equal(returning.weight, null);
+  assert.equal(returning.sets, 2);
+  assert.equal(returning.canApply, true);
+  assert.equal(run([], { entry: { ...manual, target: { kind: "duration", seconds: 30 } }, readiness: { ...readiness, lighter: true } }).canApply, false);
+});
 test("load increases need fresh successful evidence at the new load", () => {
   const next = exposure(1, { actualSets: Array.from({ length: 3 }, () => ({ weight: 105, reps: 10, effort: "moderate" })) });
   assert.equal(run([next, exposure(4)]).reason, "hold");

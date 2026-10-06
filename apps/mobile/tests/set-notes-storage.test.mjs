@@ -194,7 +194,7 @@ test("SQLite: a failure after the note write rolls back the note and timestamps 
 });
 
 for (const version of [6, 7, 8]) {
-  test(`SQLite ${version} → 9 adds optional notes transactionally and preserves all current training/profile records`, async (t) => {
+  test(`SQLite ${version} → 10 adds optional notes transactionally and preserves all current training/profile records`, async (t) => {
     setup(t, "ios");
     state.sql.exec("INSERT INTO user_profiles (id, display_name, goal, experience_level, created_at, updated_at) VALUES ('profile', 'Kept', 'strength', 'beginner', '2026-09-01', '2026-09-01');");
     const session = await workouts.createWorkoutSession();
@@ -209,7 +209,7 @@ for (const version of [6, 7, 8]) {
     const tables = ["user_profiles", "workout_sessions", "workout_exercises", "set_entries", "consistency_days", "program_library"];
     const before = Object.fromEntries(tables.map((table) => [table, state.sql.prepare(`SELECT * FROM ${table}`).all()]));
     const failing = { ...state.database, async execAsync(sql) {
-      if (sql.includes("PRAGMA user_version = 9")) throw new Error("Migration interrupted");
+      if (sql.includes("PRAGMA user_version = 10")) throw new Error("Migration interrupted");
       await state.database.execAsync(sql);
     } };
     await assert.rejects(initializeDatabase(failing), /Migration interrupted/);
@@ -218,7 +218,7 @@ for (const version of [6, 7, 8]) {
     for (const table of tables) assert.deepEqual(state.sql.prepare(`SELECT * FROM ${table}`).all(), before[table], "failure rolls back all migration changes");
     await initializeDatabase(state.database);
     await initializeDatabase(state.database);
-    assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 9);
+    assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 10);
     for (const table of tables) {
       const after = state.sql.prepare(`SELECT * FROM ${table}`).all();
       assert.equal(after.length, before[table].length);

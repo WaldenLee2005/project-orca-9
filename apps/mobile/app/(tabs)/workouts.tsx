@@ -32,6 +32,7 @@ import {
   StoredSessionExercise,
   validateActualSets,
   getActualSets,
+  setWorkoutSessionLoadCoaching,
   type WorkoutSet
 } from "../../src/storage/workoutsRepository";
 import { getStreakSummary, markTodayAsRestDay, StreakSummary } from "../../src/storage/streaksRepository";
@@ -44,7 +45,7 @@ import { getProgramLibrary, getTrainingProgram } from "../../src/storage/program
 import { subscribeToTrainingChanges } from "../../src/storage/trainingChanges";
 
 import { CoachedSetLogger } from "../../src/features/coach/CoachedSetLogger";
-import { ReadinessCheck } from "../../src/features/coach/CoachControls";
+import { LoadCoachingToggle } from "../../src/features/coach/CoachControls";
 import { CoachOverview } from "../../src/features/coach/CoachOverview";
 import { DEFAULT_READINESS, type Readiness } from "../../src/features/coach/coachModel";
 import { SavedSetNotes } from "../../src/features/workouts/SavedSetNotes";
@@ -88,6 +89,9 @@ export default function WorkoutsScreen() {
   const [selectedExercise, setSelectedExercise] = useState<SessionExercise | null>(null);
   const [customExerciseName, setCustomExerciseName] = useState("");
   const [readiness, setReadiness] = useState<Readiness>({ ...DEFAULT_READINESS });
+  const [loadCoachingEnabled, setLoadCoachingEnabled] = useState(false);
+  const [isSavingCoaching, setIsSavingCoaching] = useState(false);
+  const savingCoaching = useRef(false);
 
   const refreshTrainingState = useCallback(async function refresh(): Promise<void> {
     if (!isTrainingScreenFocused.current) return;
@@ -128,6 +132,7 @@ export default function WorkoutsScreen() {
         setSessionStartedAt(activeSession.startedAt);
         setLoggedExercises(activeSession.exercises);
         setProgramPlan(activeSession.programPlan ?? null);
+        setLoadCoachingEnabled(activeSession.loadCoachingEnabled ?? false);
         setStep("active");
       })
       .catch((error) => {
@@ -208,6 +213,7 @@ export default function WorkoutsScreen() {
         setSessionStartedAt(session.startedAt);
         setLoggedExercises(session.exercises);
         setProgramPlan(session.programPlan ?? null);
+        setLoadCoachingEnabled(session.loadCoachingEnabled ?? false);
         setSelectedExercise(null);
         setSelectedProgramEntryId(null);
         setStorageError(null);
@@ -268,6 +274,7 @@ export default function WorkoutsScreen() {
       setSessionStartedAt(session.startedAt);
       setLoggedExercises(session.exercises);
       setProgramPlan(session.programPlan ?? null);
+      setLoadCoachingEnabled(session.loadCoachingEnabled ?? false);
       setSelectedExercise(null);
       setSelectedProgramEntryId(null);
       setStep("active");
@@ -288,6 +295,23 @@ export default function WorkoutsScreen() {
     setSelectedExercise(exercise);
     setReadiness((current) => ({ ...current, sameEquipment: false }));
     setStep("logger");
+  }
+
+  async function toggleSessionCoaching(enabled: boolean) {
+    if (!sessionId || savingCoaching.current || isSavingSession || exitingSession.current) return;
+    savingCoaching.current = true;
+    setIsSavingCoaching(true);
+    try {
+      await setWorkoutSessionLoadCoaching(sessionId, enabled);
+      setLoadCoachingEnabled(enabled);
+      setReadiness({ ...DEFAULT_READINESS });
+      setStorageError(null);
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : "Could not save your load coaching setting. Please try again.");
+    } finally {
+      savingCoaching.current = false;
+      setIsSavingCoaching(false);
+    }
   }
 
   function selectProgramExercise(entry: ProgramExercise) {
@@ -404,7 +428,7 @@ export default function WorkoutsScreen() {
   }
 
   async function saveSession() {
-    if (isSavingSession || exitingSession.current) {
+    if (isSavingSession || exitingSession.current || savingCoaching.current) {
       return;
     }
 
@@ -448,6 +472,7 @@ export default function WorkoutsScreen() {
       setSelectedExercise(null);
       setSelectedProgramEntryId(null);
       setProgramPlan(null);
+      setLoadCoachingEnabled(false);
       setStorageError(null);
       setSessionNotice("Session saved.");
       setReadiness({ ...DEFAULT_READINESS });
@@ -465,7 +490,7 @@ export default function WorkoutsScreen() {
   }
 
   async function exitSession() {
-    if (isSavingSession || savingExercise.current || exitingSession.current) return;
+    if (isSavingSession || savingExercise.current || exitingSession.current || savingCoaching.current) return;
     if (loggedExercises.length > 0) {
       setStorageError(null);
       setSessionNotice("Session paused. Resume whenever you’re ready.");
@@ -483,6 +508,7 @@ export default function WorkoutsScreen() {
       setSessionStartedAt(activeSession?.startedAt ?? null);
       setLoggedExercises(activeSession?.exercises ?? []);
       setProgramPlan(activeSession?.programPlan ?? null);
+      setLoadCoachingEnabled(activeSession?.loadCoachingEnabled ?? false);
       setSelectedExercise(null);
       setSelectedProgramEntryId(null);
       setStorageError(null);
@@ -592,9 +618,9 @@ export default function WorkoutsScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityHint={loggedExercises.length > 0 ? "Return to Today and keep this unfinished workout ready to resume." : "Return to Today without saving a workout."}
-              disabled={isSavingSession || isSavingExercise || isExitingSession}
+              disabled={isSavingSession || isSavingExercise || isExitingSession || isSavingCoaching}
               onPress={exitSession}
-              style={({ pressed }) => [styles.exitSessionButton, { opacity: isSavingSession || isSavingExercise || isExitingSession ? 0.55 : pressed ? 0.78 : 1 }]}
+              style={({ pressed }) => [styles.exitSessionButton, { opacity: isSavingSession || isSavingExercise || isExitingSession || isSavingCoaching ? 0.55 : pressed ? 0.78 : 1 }]}
             >
               <Ionicons name="exit-outline" size={18} color={colors.accent} />
               <Text style={styles.exitSessionText}>{isExitingSession ? "Exiting…" : "Exit session"}</Text>
@@ -608,11 +634,14 @@ export default function WorkoutsScreen() {
           {storageError ? <Text style={[styles.errorText, { color: theme.colors.accent }]}>{storageError}</Text> : null}
         </View>
 
+        <LoadCoachingToggle scope="session" enabled={loadCoachingEnabled} onChange={(enabled) => { void toggleSessionCoaching(enabled); }}
+          disabled={!sessionId || isSavingSession || isExitingSession || isSavingCoaching} />
+
         {programPlan ? <View style={styles.programQueue}>
           <Text style={styles.programQueueTitle}>{pendingProgramExercises.length ? "Your planned exercises" : "All planned exercises logged."}</Text>
           <Text style={styles.programQueueHint}>{programPlan.exercises.length - pendingProgramExercises.length} of {programPlan.exercises.length} logged. Targets aren’t counted until you save each exercise.</Text>
           {pendingProgramExercises.map((entry) => <Pressable key={entry.id} accessibilityRole="button"
-            accessibilityLabel={`Log ${entry.exerciseName}, ${formatProgramPrescription(entry)}`} disabled={isExitingSession || isSavingSession} onPress={() => selectProgramExercise(entry)} style={styles.programQueueRow}>
+            accessibilityLabel={`Log ${entry.exerciseName}, ${formatProgramPrescription(entry)}`} disabled={isExitingSession || isSavingSession || isSavingCoaching} onPress={() => selectProgramExercise(entry)} style={styles.programQueueRow}>
             <Text style={styles.programQueueOrder}>{programPlan.exercises.findIndex((item) => item.id === entry.id) + 1}</Text>
             <View style={{ flex: 1, gap: 6 }}><Text style={styles.programQueueName}>{entry.exerciseName}</Text>
               <Text style={styles.programQueueHint}>{formatProgramPrescription(entry)}</Text></View>
@@ -640,13 +669,13 @@ export default function WorkoutsScreen() {
 
           <Pressable
             accessibilityRole="button"
-            disabled={isExitingSession || isSavingSession}
+            disabled={isExitingSession || isSavingSession || isSavingCoaching}
             onPress={() => setStep("picker")}
             style={({ pressed }) => [
               styles.addExerciseButton,
               {
                 backgroundColor: theme.colors.accent,
-                opacity: isExitingSession || isSavingSession ? 0.55 : pressed ? 0.82 : 1
+                opacity: isExitingSession || isSavingSession || isSavingCoaching ? 0.55 : pressed ? 0.82 : 1
               }
             ]}
           >
@@ -656,13 +685,13 @@ export default function WorkoutsScreen() {
 
           <Pressable
             accessibilityRole="button"
-            disabled={isSavingSession || isExitingSession}
+            disabled={isSavingSession || isExitingSession || isSavingCoaching}
             onPress={saveSession}
             style={({ pressed }) => [
               styles.saveSessionButton,
               {
                 borderColor: theme.colors.border,
-                opacity: isSavingSession || isExitingSession ? 0.55 : pressed ? 0.78 : 1
+                opacity: isSavingSession || isExitingSession || isSavingCoaching ? 0.55 : pressed ? 0.78 : 1
               }
             ]}
           >
@@ -755,6 +784,7 @@ export default function WorkoutsScreen() {
           <Text style={styles.programQueueHint}>{(() => { const entry = programPlan?.exercises.find((item) => item.id === selectedProgramEntryId); return entry ? formatProgramPrescription(entry) : ""; })()}</Text>
         </View> : null}
         <CoachedSetLogger key={`${selectedExercise.id}:${selectedProgramEntryId ?? "manual"}`} exerciseId={selectedExercise.id}
+          coachingEnabled={loadCoachingEnabled}
           entry={programPlan?.exercises.find((item) => item.id === selectedProgramEntryId)} readiness={readiness} onReadiness={setReadiness}
           saving={isSavingExercise} onSave={saveExerciseToSession} />
         {storageError ? <Text accessibilityRole="alert" style={[styles.errorText, { color: colors.danger }]}>{storageError}</Text> : null}

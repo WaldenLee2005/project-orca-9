@@ -9,3 +9,11 @@ export function preserveWorkoutSetNotes(next: WorkoutSet[], current: WorkoutSet[
     note: current[index] ? current[index].note ?? null : next[index].note ?? null
   }));
 }
+
+// A sets-only suggestion must never fill or replace actual measurements.
+export function applyCoachSetProposal(proposal: { sets: number; weight: number | null }, current: WorkoutSet[], seed: () => WorkoutSet): WorkoutSet[] {
+  const next = proposal.weight == null
+    ? current.slice(0, Math.max(1, proposal.sets))
+    : Array.from({ length: proposal.sets }, () => ({ ...seed(), weight: proposal.weight!, effort: null }));
+  return preserveWorkoutSetNotes(next, current);
+}

@@ -63,13 +63,27 @@ export const PROGRAM_DAY_CHOICES = ["training", "rest"] as const;
 export type ProgramDayKind = typeof PROGRAM_DAY_CHOICES[number];
 export type ProgramDay = { id: string; name: string; kind: ProgramDayKind; exercises: ProgramExercise[] };
 export type ProgramSchedule = { mode: "weekly" | "cycle"; startDate: string };
-export type ProgramDraft = { id?: string; name: string; schedule: ProgramSchedule; days: ProgramDay[] };
+export type ProgramDraft = { id?: string; name: string; schedule: ProgramSchedule; days: ProgramDay[]; loadCoachingEnabled?: boolean };
 export type TrainingProgram = ProgramDraft & { id: string; createdAt: string; updatedAt: string };
-export type WorkoutProgramPlan = { programId: string; programName: string; dayId: string; dayName: string; exercises: ProgramExercise[] };
+export type WorkoutProgramPlan = { programId: string; programName: string; dayId: string; dayName: string; exercises: ProgramExercise[]; loadCoachingEnabled?: boolean };
 export type ScheduleRevision = { effectiveFrom: string; programId: string | null; schedule: ProgramSchedule | null; dayKinds: ProgramDayKind[] };
 
 export const PROGRAM_LIMITS = { name: 80, exercises: 100, sets: 12, reps: 100, seconds: 3600, days: 28 };
 export const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+/** Preserve the opt-in of existing programs without exposing their old per-exercise setup. */
+export function isProgramLoadCoachingEnabled(program: Pick<ProgramDraft, "loadCoachingEnabled" | "days">) {
+  return program.loadCoachingEnabled ?? program.days.some((day) => day.exercises.some((entry) => Boolean(entry.load)));
+}
+
+export function isPlanLoadCoachingEnabled(plan: WorkoutProgramPlan | null | undefined) {
+  return plan?.loadCoachingEnabled ?? Boolean(plan?.exercises.some((entry) => Boolean(entry.load)));
+}
+
+function validateLoadCoachingSetting(value: unknown) {
+  if (value !== undefined && typeof value !== "boolean") throw new Error("Choose whether load coaching is on or off.");
+  return value as boolean | undefined;
+}
 
 export function localDateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -117,6 +131,7 @@ function validateExercises(entries: ProgramExercise[], required: boolean): Progr
 }
 
 export function validateProgram(input: ProgramDraft): ProgramDraft {
+  const loadCoachingEnabled = validateLoadCoachingSetting(input?.loadCoachingEnabled);
   const name = typeof input?.name === "string" ? input.name.trim() : "";
   if (!name) throw new Error("Give your program a name.");
   if (name.length > PROGRAM_LIMITS.name) throw new Error(`Use a name of ${PROGRAM_LIMITS.name} characters or fewer.`);
@@ -132,7 +147,8 @@ export function validateProgram(input: ProgramDraft): ProgramDraft {
     try { return { id: day.id, name: day.name.trim(), kind: day.kind, exercises: validateExercises(day.exercises, day.kind === "training") }; }
     catch (error) { throw new Error(`${getDaySlotLabel(schedule.mode, index)}: ${(error as Error).message}`); }
   });
-  return { ...(input.id ? { id: input.id } : {}), name, schedule: { mode: schedule.mode, startDate: schedule.startDate }, days };
+  return { ...(input.id ? { id: input.id } : {}), name, schedule: { mode: schedule.mode, startDate: schedule.startDate }, days,
+    ...(loadCoachingEnabled !== undefined ? { loadCoachingEnabled } : {}) };
 }
 
 export function parseTrainingProgram(value: unknown): TrainingProgram | null {
@@ -155,7 +171,8 @@ export function toWorkoutProgramPlan(program: TrainingProgram, dayId?: string): 
   const valid = validateProgram(program);
   const day = dayId ? valid.days.find((item) => item.id === dayId) : valid.days.length === 1 ? valid.days[0] : valid.days[getScheduledDayIndex(valid.schedule, valid.days.length)];
   if (!day || day.kind !== "training") throw new Error("Choose a training day to start a workout.");
-  return { programId: program.id, programName: valid.name, dayId: day.id, dayName: getProgramDayName(valid, day), exercises: day.exercises };
+  return { programId: program.id, programName: valid.name, dayId: day.id, dayName: getProgramDayName(valid, day), exercises: day.exercises,
+    loadCoachingEnabled: isProgramLoadCoachingEnabled(valid) };
 }
 
 export function parseWorkoutProgramPlan(value: unknown): WorkoutProgramPlan | null {
@@ -163,9 +180,11 @@ export function parseWorkoutProgramPlan(value: unknown): WorkoutProgramPlan | nu
   const plan = value as WorkoutProgramPlan;
   if (typeof plan.programId !== "string" || !plan.programId || typeof plan.programName !== "string" || !Array.isArray(plan.exercises)) return null;
   try {
+    const loadCoachingEnabled = validateLoadCoachingSetting(plan.loadCoachingEnabled);
     if (!plan.programName.trim() || plan.programName.trim().length > PROGRAM_LIMITS.name) return null;
     if (typeof plan.dayId !== "string" || !plan.dayId || typeof plan.dayName !== "string" || !plan.dayName.trim()) return null;
-    return { programId: plan.programId, programName: plan.programName.trim(), dayId: plan.dayId, dayName: plan.dayName.trim(), exercises: validateExercises(readSavedTargets(plan.exercises), true) };
+    return { programId: plan.programId, programName: plan.programName.trim(), dayId: plan.dayId, dayName: plan.dayName.trim(), exercises: validateExercises(readSavedTargets(plan.exercises), true),
+      ...(loadCoachingEnabled !== undefined ? { loadCoachingEnabled } : {}) };
   } catch { return null; }
 }
 

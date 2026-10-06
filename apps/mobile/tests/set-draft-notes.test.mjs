@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { preserveWorkoutSetNotes } from "../src/features/workouts/setDraftNotes.ts";
+import { applyCoachSetProposal, preserveWorkoutSetNotes } from "../src/features/workouts/setDraftNotes.ts";
 
 const set = (weight, note = null) => ({ weight, reps: 8, effort: null, warmup: false, note });
+
+test("sets-only coaching preserves individual measurements, effort, warmups and notes without inventing sets", () => {
+  const current = [{ ...set(70), effort: "hard", warmup: true }, { ...set(65), reps: 6 }, { ...set(60, "Keep this note"), durationSeconds: 45, reps: 0 }];
+  const seed = () => { throw new Error("sets-only coaching must not create values"); };
+  assert.deepEqual(applyCoachSetProposal({ sets: 2, weight: null }, current, seed), current);
+  assert.deepEqual(applyCoachSetProposal({ sets: 5, weight: null }, current, seed), current);
+  assert.deepEqual(applyCoachSetProposal({ sets: 1, weight: null }, current.slice(0, 2), seed), [current[0]]);
+});
 
 test("applying and undoing coach values preserves current notes, including edits and clearing", () => {
   const before = [set(100, "Use a slower descent"), set(95, "Old note"), set(90)];

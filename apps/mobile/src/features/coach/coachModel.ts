@@ -1,7 +1,7 @@
 import type { ProgramExercise } from "../programs/programModel";
 import type { ExerciseExposure, WorkoutSet } from "../../storage/workoutsRepository";
 
-export const COACH_POLICY = { version: "local-prototype-1", gapDays: 14, qualifyingSessions: 2 } as const;
+export const COACH_POLICY = { version: "local-prototype-2", gapDays: 14, qualifyingSessions: 2 } as const;
 export type Readiness = { feeling: "unknown" | "good" | "low" | "concern"; gap: "unknown" | "break" | "elsewhere"; sameEquipment: boolean; lighter: boolean };
 export const DEFAULT_READINESS: Readiness = { feeling: "unknown", gap: "unknown", sameEquipment: false, lighter: false };
 export type CoachReason = "concern" | "setup" | "calibrate" | "gap" | "return" | "readiness" | "lighter" | "struggling" | "hold" | "progress";
@@ -29,15 +29,29 @@ export function evaluateCoach({ entry, history, readiness, now }: CoachContext):
   const daysAway = relevant[0] ? day(now) - day(relevant[0].performedAt) : null;
   // Full evidence fingerprint: history edits, settings, readiness, and date invalidate a preview.
   const key = JSON.stringify([COACH_POLICY.version, day(now), entry, relevant, readiness]);
-  function proposal(reason: CoachReason, title: string, explanation: string, weight: number | null = null, sets = entry.sets): CoachProposal {
-    return { key, reason, title, explanation, weight, sets, daysAway, canApply: weight != null && reason !== "concern" };
+  function proposal(reason: CoachReason, title: string, explanation: string, weight: number | null = null, sets = entry.sets, setsOnly = false): CoachProposal {
+    return { key, reason, title, explanation, weight, sets, daysAway, canApply: reason !== "concern" && (weight != null || (setsOnly && sets < entry.sets)) };
   }
   if (readiness.feeling === "concern") return proposal("concern", "Pause progression", "Pain, injury or illness needs more than a load formula. No training adjustment is recommended here. Seek appropriate professional guidance; logging remains available.");
-  if (!Number.isFinite(now.getTime()) || entry.target.kind === "duration" || !entry.load || !readiness.sameEquipment) {
-    return proposal("setup", "Keep this one manual", "Load coaching needs a program exercise with external-weight settings and confirmation of the same equipment. Timed, bodyweight and assisted movements stay manual in this prototype.");
+  if (!Number.isFinite(now.getTime()) || entry.target.kind === "duration") {
+    return proposal("setup", "Keep this one manual", "Timed movements stay manual in this prototype. Record the work you actually complete.");
+  }
+  if (!entry.load) {
+    const shorter = Math.max(1, entry.sets - 1);
+    if (daysAway != null && daysAway >= COACH_POLICY.gapDays) {
+      if (readiness.gap !== "break") return proposal("gap", "Check in after time away", readiness.gap === "elsewhere"
+        ? "Training elsewhere adds context, but no comparable loads. Keep your weights manual; no adjustment is offered without a confirmed break."
+        : `No results for this exercise in ${daysAway} days. Confirm a break or outside training before reviewing a shorter session.`);
+      return proposal("return", "Review a shorter return", "A confirmed break blocks increases. You can review one fewer planned set today while keeping every weight and rep value you entered. This is not a medical clearance.", null, shorter, true);
+    }
+    if (readiness.feeling === "low" || readiness.lighter) return proposal(readiness.feeling === "low" ? "readiness" : "lighter", "Review fewer sets today", "You can review one fewer planned set. Your entered weights and reps stay the same; this changes today's draft only.", null, shorter, true);
+    return proposal("calibrate", "Build a reliable baseline", "Record your actual weights, working sets and effort. Numeric load suggestions need trustworthy load and equipment settings; no weight is guessed. You can still request a shorter session above.");
+  }
+  if (!readiness.sameEquipment) {
+    return proposal("setup", "Confirm the equipment", "Numeric load suggestions need confirmation of the same equipment and weight convention. Bodyweight and assisted movements stay manual in this prototype.");
   }
   const load = entry.load;
-  if (!Number.isFinite(load.weight) || load.weight < 0 || load.weight > 10000 || load.unit !== "lb" || !Number.isFinite(load.increment) || load.increment < 0.5 || load.increment > 50) return proposal("setup", "Check load settings", "Save valid load settings in your program first.");
+  if (!Number.isFinite(load.weight) || load.weight < 0 || load.weight > 10000 || load.unit !== "lb" || !Number.isFinite(load.increment) || load.increment < 0.5 || load.increment > 50) return proposal("setup", "Keep weights manual", "These saved load settings cannot support numeric suggestions. Record and review your actual weights manually.");
   const comparable = relevant.filter((item) => compatible(item.prescription, entry) && item.actualSets.length > 0 && working(item).length > 0 && item.actualSets.every(validSet));
   // Don't bypass a newer incompatible or incomplete result to reuse older success.
   const latest = comparable[0] === relevant[0] ? comparable[0] : undefined;

@@ -102,7 +102,9 @@ Current Session flow:
 - Recent sessions expand to actual exercises/sets with optional private note editing. `SavedSetNotes` also provides review/edit/clear in the active log; collapsed sections retain unsaved note drafts.
 - Logged rows show exercise name, save time, sets, reps, and weight.
 - Saved rows support swipe-to-delete.
-- The current logger uses per-set numeric fields/steppers for actual weight, reps or duration, with optional effort/warm-up flags and a collapsed note-to-self editor. Add/copy/remove controls keep fast logging possible without notes.
+- Actual weight uses an in-box horizontal ruler with 0.5 lb snapping, four tick sizes (0.5/1/5/10 lb), native haptic feedback and an exact-entry fallback. Reps/duration retain numeric steppers; effort is a compact optional segmented row. Add/copy/remove, warm-ups and private notes remain available.
+- Load coaching has one saved program default and a persisted session override, with no exercise-specific setup UI. Turning it off suppresses check-ins/proposals for the entire session. Existing explicit load/equipment metadata stays readable; exercises without it may receive reviewed set-count reductions that preserve manual measurements, but no invented numeric load advice.
+- Native schema 10 adds nullable `workout_sessions.load_coaching_enabled` to current data. Web keeps its existing workout key/marker; old snapshots inherit their program/legacy opt-in. Session toggles serialize with other writes and never change results, schedules or the saved program.
 - Native schema 9 adds nullable `set_entries.note` without resetting schema-6/7/8 data. Web stores optional `WorkoutSet.note` under the existing key/marker. Notes are trimmed, bounded to 1,000 characters and blank notes become null. Serialized single-set updates preserve measurements and work for active/completed sessions; coaching inputs exclude private note text.
 
 ### Programs

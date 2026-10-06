@@ -1,5 +1,7 @@
 # Programs Feature
 
+Load coaching is one program-wide switch in the builder; there is no exercise-specific coaching setup. The saved default is copied into new workout snapshots, and Session can override it for that workout only. Existing load/equipment metadata and schedules remain intact; new programs default off. Numeric load suggestions retain explicit-context requirements, while reviewed set-count reductions can leave manually entered weights unchanged.
+
 User-created multi-day training programs, stored locally with no account requirement.
 
 - `ProgramsScreen.tsx` / `ProgramOverview.tsx`: compact saved/starter cards open a read-only overview with **Activate program** and **Edit program** first, followed by every day's ordered exercises, targets and rest slots. Editing opens only through Edit; saving returns to the overview. Single-day starts, confirmed deactivation and deletion remain available for saved programs. Unsaved editor drafts survive ordinary tab switches; save before reloading or closing the app.

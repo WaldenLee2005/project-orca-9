@@ -5,7 +5,6 @@ import { Keyboard, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Te
 import { createThemedStyles } from "../../theme/designSystem";
 import { clampDragTranslation, getDragTargetIndex, moveProgramExercise, PROGRAM_LIMITS, type ProgramExercise, type RowFrame } from "./programModel";
 import { ExerciseTargetEditor } from "./ExerciseTargetEditor";
-import { ProgramLoadEditor } from "../coach/CoachControls";
 
 export type ProgramScrollMetrics = { offset: number; height: number; contentHeight: number; top: number };
 type Drag = { id: string; from: number; to: number; translation: number; dy: number; pointerY: number; scrollStart: number; frames: RowFrame[] };
@@ -167,7 +166,6 @@ function ProgramExerciseRow({ entry, index, count, active, target, compact, disa
         <GoalInput label="Sets" context={label} value={entry.sets} max={PROGRAM_LIMITS.sets} disabled={disabled} onChange={(sets) => onUpdate({ sets })} />
       </View>
       <ExerciseTargetEditor value={entry.target} onChange={(target) => onUpdate({ target })} disabled={disabled} context={label} />
-      <ProgramLoadEditor load={entry.load} onChange={(load) => onUpdate({ load })} disabled={disabled} context={label} />
       <View style={styles.rowActions}>
         <View style={styles.moveActions}>
           <Pressable accessibilityRole="button" accessibilityLabel={`Move ${label} up`} disabled={disabled || index === 0}

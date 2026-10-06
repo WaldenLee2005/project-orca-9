@@ -1,19 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { AppState, Pressable, Text, TextInput, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { NumberField, DurationFields } from "../programs/ExerciseTargetEditor";
 import type { ProgramExercise } from "../programs/programModel";
 import { getCoachHistory, MAX_SET_NOTE_LENGTH, validateActualSets, type ExerciseExposure, type WorkoutSet } from "../../storage/workoutsRepository";
 import { evaluateCoach, type Readiness } from "./coachModel";
-import { CoachButton, DecimalField, ReadinessCheck, themedCoachStyles } from "./CoachControls";
+import { CoachButton, ReadinessCheck, themedCoachStyles } from "./CoachControls";
 import { useThemeStyles } from "../../theme/ThemeProvider";
-import { preserveWorkoutSetNotes } from "../workouts/setDraftNotes";
+import { applyCoachSetProposal, preserveWorkoutSetNotes } from "../workouts/setDraftNotes";
+import { WeightRuler } from "../workouts/WeightRuler";
+import { EffortSelector } from "../workouts/EffortSelector";
 
-export function CoachedSetLogger({ exerciseId, entry, readiness, onReadiness, saving, onSave, loadHistory = getCoachHistory }: {
+export function CoachedSetLogger({ exerciseId, entry, readiness, onReadiness, coachingEnabled = false, saving, onSave, loadHistory = getCoachHistory }: {
   exerciseId: string; entry?: ProgramExercise; readiness: Readiness; onReadiness: (value: Readiness) => void;
   saving: boolean; onSave: (sets: WorkoutSet[]) => Promise<void>;
   loadHistory?: () => Promise<ExerciseExposure[]>;
+  coachingEnabled?: boolean;
 }) {
-  const { styles: s } = useThemeStyles(themedCoachStyles);
+  const { styles: s, colors } = useThemeStyles(themedCoachStyles);
   const [timed, setTimed] = useState(entry?.target.kind === "duration");
   const seed = (): WorkoutSet => ({ weight: entry?.load?.weight ?? NaN, reps: entry?.target.kind === "duration" ? 0 : entry?.target.kind === "repRange" ? entry.target.min : entry?.target.reps ?? 8,
     durationSeconds: entry?.target.kind === "duration" ? entry.target.seconds : null, effort: null, warmup: false, note: null });
@@ -25,12 +29,13 @@ export function CoachedSetLogger({ exerciseId, entry, readiness, onReadiness, sa
   const [now, setNow] = useState(new Date());
   const [applied, setApplied] = useState<{ key: string; before: WorkoutSet[] } | null>(null);
   const inFlight = useRef(false);
-  const current = useRef({ readiness, entry }); current.current = { readiness, entry };
+  const current = useRef({ readiness, entry, coachingEnabled }); current.current = { readiness, entry, coachingEnabled };
   const mounted = useRef(true);
-  const proposal = entry && history ? evaluateCoach({ entry, history, readiness, now }) : null;
+  const proposal = coachingEnabled && entry && history ? evaluateCoach({ entry, history, readiness, now }) : null;
 
   useEffect(() => {
     mounted.current = true;
+    if (!coachingEnabled) return () => { mounted.current = false; };
     async function refresh() {
       setNow(new Date());
       try { const data = await loadHistory(); if (mounted.current) { setHistory(data); setError(""); } }
@@ -40,7 +45,7 @@ export function CoachedSetLogger({ exerciseId, entry, readiness, onReadiness, sa
     const app = AppState.addEventListener("change", (state) => { if (state === "active") void refresh(); });
     const timer = setInterval(() => { if (mounted.current) setNow(new Date()); }, 30000);
     return () => { mounted.current = false; app.remove(); clearInterval(timer); };
-  }, []);
+  }, [coachingEnabled, loadHistory]);
 
   useEffect(() => {
     if (applied && proposal?.key !== applied.key) {
@@ -53,19 +58,19 @@ export function CoachedSetLogger({ exerciseId, entry, readiness, onReadiness, sa
   function update(index: number, patch: Partial<WorkoutSet>) { edit(sets.map((set, i) => i === index ? { ...set, ...patch } : set)); }
   function updateNote(index: number, note: string) { setSets((currentSets) => currentSets.map((set, i) => i === index ? { ...set, note } : set)); }
   async function apply() {
-    if (!entry || !proposal?.canApply || inFlight.current || applied) return;
+    if (!coachingEnabled || !entry || !proposal?.canApply || inFlight.current || applied) return;
     inFlight.current = true; setChecking(true); setError("");
     const preview = proposal;
     try {
       const freshHistory = await loadHistory();
-      if (!mounted.current) return;
+      if (!mounted.current || !current.current.coachingEnabled) return;
       const fresh = evaluateCoach({ entry: current.current.entry!, history: freshHistory, readiness: current.current.readiness, now: new Date() });
       setHistory(freshHistory); setNow(new Date());
-      if (fresh.key !== preview.key || !fresh.canApply || fresh.weight == null) {
+      if (fresh.key !== preview.key || !fresh.canApply) {
         setNotice("New information changed this recommendation. Review the refreshed card first."); return;
       }
       setApplied({ key: fresh.key, before: sets });
-      const nextSets = preserveWorkoutSetNotes(Array.from({ length: fresh.sets }, () => ({ ...seed(), weight: fresh.weight!, effort: null })), sets);
+      const nextSets = applyCoachSetProposal(fresh, sets, seed);
       setSets(nextSets);
       setNotice(`Applied to this exercise today only. Record actual results below; your program has not changed.${nextSets.length > fresh.sets ? " Extra draft sets with notes were kept. Remove any you did not complete." : ""}`);
     } catch { setError("Could not verify the latest history. No recommendation was applied."); }
@@ -77,20 +82,20 @@ export function CoachedSetLogger({ exerciseId, entry, readiness, onReadiness, sa
   }
   const disabled = saving || checking;
   return <View style={{ gap: 14 }}>
-    <ReadinessCheck value={readiness} onChange={onReadiness} disabled={disabled} />
-    {entry ? <View style={s.card}>
+    {coachingEnabled ? <ReadinessCheck value={readiness} onChange={onReadiness} disabled={disabled} /> : null}
+    {coachingEnabled && entry ? <View style={s.card}>
       <Text style={s.title}>Today's recommendation</Text>
       {entry.load ? <>
         <Text style={s.copy}>{entry.load.equipmentKey} · {entry.load.convention === "perHand" ? "weight per hand" : "total weight"} · {entry.load.increment} lb steps</Text>
         <CoachButton label="Same equipment and weight convention" selected={readiness.sameEquipment} disabled={disabled} onPress={() => onReadiness({ ...readiness, sameEquipment: !readiness.sameEquipment })} />
-      </> : <Text style={s.copy}>For load recommendations, edit this exercise in Programs and set up load coaching.</Text>}
+      </> : <Text style={s.copy}>Log your actual sets to establish a starting point. Load suggestions need comparable performance and a known weight convention.</Text>}
       {proposal ? <>
         <Text style={s.eyebrow}>{proposal.title}</Text><Text style={s.copy}>{proposal.explanation}</Text>
         {proposal.daysAway != null && proposal.daysAway >= 14 ? <View style={{ gap: 8 }}><Text style={s.copy}>About the missing logs</Text>
           <View style={s.row}>{([ ["unknown", "Not sure"], ["break", "I took a break"], ["elsewhere", "Trained elsewhere"] ] as const).map(([gap, label]) =>
             <CoachButton key={gap} label={label} selected={readiness.gap === gap} disabled={disabled} onPress={() => onReadiness({ ...readiness, gap })} />)}</View></View> : null}
         {proposal.canApply ? <>
-          <Text style={s.title}>{proposal.sets} sets · {proposal.weight} lb</Text>
+          <Text style={s.title}>{proposal.sets} sets · {proposal.weight == null ? "keep your weights" : `${proposal.weight} lb`}</Text>
           <Text style={s.copy}>Rep goals stay the same. Prototype rules—not a guarantee of a safe load.</Text>
           <View style={s.row}><CoachButton label={checking ? "Checking…" : applied ? "Applied for today" : "Use for today"} selected={!!applied} disabled={disabled || !!applied} onPress={apply} />
             <CoachButton label={applied ? "Undo suggestion" : "Keep my values"} disabled={disabled} onPress={() => { if (applied) setSets((currentSets) => preserveWorkoutSetNotes(applied.before, currentSets)); setApplied(null); setNotice("Your values are unchanged by the coach. Edit below as needed."); }} /></View>
@@ -98,18 +103,23 @@ export function CoachedSetLogger({ exerciseId, entry, readiness, onReadiness, sa
       </> : <Text style={s.copy}>{history === null ? "Loading local performance…" : "No recommendation."}</Text>}
     </View> : null}
     <Text style={s.title}>Record each completed set</Text>
-    <Text style={s.copy}>Targets are starting points, not completed work. Remove sets you did not complete. Weight is in lb; enter 0 for no external load.</Text>
+    <Text style={s.copy}>Swipe the weight scale or tap the value to type. Remove sets you did not complete. Use 0 lb for no external load.</Text>
     {!entry ? <View style={s.row}>{[false, true].map((value) => <CoachButton key={String(value)} label={value ? "Timed" : "Reps"} selected={timed === value} disabled={disabled}
       onPress={() => { setTimed(value); edit(sets.map((set) => ({ ...set, reps: value ? 0 : 8, durationSeconds: value ? 45 : null }))); }} />)}</View> : null}
-    {sets.map((set, index) => <View key={index} style={s.card}>
+    {sets.map((set, index) => <View key={index} style={[s.card, { marginVertical: 0, padding: 16, gap: 12 }]}>
       <View style={[s.row, { justifyContent: "space-between", alignItems: "center" }]}><Text style={s.eyebrow}>SET {index + 1}</Text>
-        <CoachButton label={`Remove set ${index + 1}`} disabled={disabled || sets.length === 1} onPress={() => edit(sets.filter((_, i) => i !== index))} /></View>
-      <View style={s.row}><DecimalField label={`Weight lb · set ${index + 1}`} value={set.weight} disabled={disabled} onChange={(weight) => update(index, { weight })} />
-        {!timed ? <NumberField label={`Reps · set ${index + 1}`} value={set.reps} max={100} disabled={disabled} onChange={(reps) => update(index, { reps })} /> : null}</View>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Remove set ${index + 1}`} accessibilityState={{ disabled: disabled || sets.length === 1 }}
+          disabled={disabled || sets.length === 1} onPress={() => edit(sets.filter((_, i) => i !== index))}
+          style={{ width: 44, height: 44, justifyContent: "center", alignItems: "center", opacity: disabled || sets.length === 1 ? 0.45 : 1 }}>
+          <Ionicons name="close" size={20} color={colors.secondaryText} />
+        </Pressable></View>
+      <WeightRuler label={`Weight lb · set ${index + 1}`} value={set.weight} disabled={disabled} onChange={(weight) => update(index, { weight })} />
+      <View style={[s.row, { alignItems: "flex-end" }]}>
+        {!timed ? <NumberField label={`Reps · set ${index + 1}`} value={set.reps} max={100} disabled={disabled} onChange={(reps) => update(index, { reps })} /> : null}
+        <CoachButton label="Warm-up" selected={!!set.warmup} disabled={disabled} onPress={() => update(index, { warmup: !set.warmup })} />
+      </View>
       {timed ? <DurationFields seconds={set.durationSeconds ?? 45} context={`for set ${index + 1}`} disabled={disabled} onChange={(durationSeconds) => update(index, { durationSeconds, reps: 0 })} /> : null}
-      <View style={s.row}>{([ [null, "Effort: skip"], ["easy", "Easy"], ["moderate", "About right"], ["hard", "Hard"] ] as const).map(([effort, label]) =>
-        <CoachButton key={String(effort)} label={label} selected={(set.effort ?? null) === effort} disabled={disabled} onPress={() => update(index, { effort })} />)}
-        <CoachButton label="Warm-up set" selected={!!set.warmup} disabled={disabled} onPress={() => update(index, { warmup: !set.warmup })} /></View>
+      <EffortSelector value={set.effort} setNumber={index + 1} disabled={disabled} onChange={(effort) => update(index, { effort })} />
       <SetNoteField value={set.note} setNumber={index + 1} disabled={disabled} onChange={(note) => updateNote(index, note)} />
     </View>)}
     <CoachButton label="Add set (copy last values)" disabled={disabled || sets.length >= 12} onPress={() => edit([...sets, { ...sets[sets.length - 1], effort: null, note: null }])} />

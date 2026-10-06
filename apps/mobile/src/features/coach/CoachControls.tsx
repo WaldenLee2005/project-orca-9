@@ -1,8 +1,7 @@
 import { useThemeStyles } from "../../theme/ThemeProvider";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, Switch, Text, TextInput, View } from "react-native";
 import { useEffect, useRef, useState } from "react";
 import { createThemedStyles } from "../../theme/designSystem";
-import type { ProgramLoad } from "../programs/programModel";
 import type { Readiness } from "./coachModel";
 
 export function CoachButton({ label, onPress, selected = false, disabled = false }: { label: string; onPress: () => void; selected?: boolean; disabled?: boolean }) {
@@ -32,20 +31,16 @@ export function ReadinessCheck({ value, onChange, disabled = false }: { value: R
     <Text style={coachStyles.copy}>Optional, on-device check-in. Suggestions need your approval and never change your program automatically.</Text>
   </View>;
 }
-export function ProgramLoadEditor({ load, onChange, disabled, context }: { load?: ProgramLoad; onChange: (load?: ProgramLoad) => void; disabled: boolean; context: string }) {
-  const { styles: coachStyles, colors, ui } = useThemeStyles(themedCoachStyles);
-  return <View style={{ gap: 12 }}>
-    <CoachButton label={load ? "Load coaching: on" : "Set up load coaching"} selected={!!load} disabled={disabled}
-      onPress={() => onChange(load ? undefined : { weight: 0, increment: 5, unit: "lb", convention: "total", equipmentKey: "" })} />
-    {load ? <>
-      <Text style={coachStyles.copy}>External resistance only, in lb. Leave assisted, bodyweight and timed exercises manual. Enter your own starting load; 0 is not a recommendation.</Text>
-      <View style={coachStyles.row}><DecimalField label={`Starting lb · ${context}`} value={load.weight} disabled={disabled} onChange={(weight) => onChange({ ...load, weight })} />
-        <DecimalField label={`Smallest increase · ${context}`} value={load.increment} disabled={disabled} onChange={(increment) => onChange({ ...load, increment })} /></View>
-      <View style={coachStyles.row}>{([ ["total", "Total weight"], ["perHand", "Per hand"] ] as const).map(([convention, label]) =>
-        <CoachButton key={convention} label={label} selected={load.convention === convention} disabled={disabled} onPress={() => onChange({ ...load, convention })} />)}</View>
-      <TextInput accessibilityLabel={`Equipment label for ${context}`} placeholder="Equipment label, e.g. Home barbell" placeholderTextColor={colors.mutedText} value={load.equipmentKey} maxLength={80}
-        editable={!disabled} onChangeText={(equipmentKey) => onChange({ ...load, equipmentKey })} style={coachStyles.input} />
-    </> : null}
+export function LoadCoachingToggle({ enabled, onChange, disabled = false, scope }: { enabled: boolean; onChange: (enabled: boolean) => void; disabled?: boolean; scope: "program" | "session" }) {
+  const { styles: s, colors } = useThemeStyles(themedCoachStyles);
+  return <View style={s.toggleCard}>
+    <View style={s.toggleRow}>
+      <View style={{ flex: 1, gap: 3 }}><Text style={s.toggleLabel}>Load coaching</Text>
+        <Text style={s.copy}>{scope === "program" ? "For every session in this program" : "For this entire session"}</Text></View>
+      <Switch accessibilityLabel={`Load coaching for this ${scope}`} value={enabled} disabled={disabled} onValueChange={onChange}
+        trackColor={{ false: colors.border, true: colors.accent }} />
+    </View>
+    {enabled ? <Text style={s.copy}>Optional local prototype. Review suggestions before applying them; your actual sets remain yours to record.</Text> : null}
   </View>;
 }
 export const themedCoachStyles = createThemedStyles((colors, ui) => ({
@@ -55,5 +50,8 @@ export const themedCoachStyles = createThemedStyles((colors, ui) => ({
   row: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   button: { minHeight: 44, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: colors.surfaceInset, borderWidth: 1, borderColor: "transparent", borderRadius: 10, justifyContent: "center" },
   input: { ...ui.input, minHeight: 48, padding: 12, color: colors.text, fontSize: 16 },
-  error: { color: colors.danger, fontSize: 13, lineHeight: 20 }
+  error: { color: colors.danger, fontSize: 13, lineHeight: 20 },
+  toggleCard: { ...ui.group, padding: 16, gap: 10, marginTop: 14 },
+  toggleRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  toggleLabel: { color: colors.text, fontSize: 15, fontWeight: "600" }
 }));

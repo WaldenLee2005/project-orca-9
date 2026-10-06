@@ -84,9 +84,10 @@ Current capabilities:
 - Choose catalog exercises from the selector.
 - Add custom exercises by name.
 - Save the active session, logged exercises, and set rows locally with SQLite.
-- Record actual weight, reps or duration separately for each set with numeric fields/steppers.
+- Record weight with a swipeable in-box ruler, fixed marker, 0.5 lb snapping and distinct 0.5/1/5/10 lb ticks. Native haptic feedback accompanies changes; exact decimal entry and accessible step controls remain available. Reps/duration keep numeric steppers.
 - Add/copy/remove individual sets.
-- Optionally record effort and warm-up status for each set.
+- Optionally record effort in one compact Skip / Easy / Right / Hard row and retain warm-up status for each set.
+- Toggle load coaching once for the whole session, with a saved program default and a persistent session override. Per-exercise setup controls are removed; existing explicit load metadata stays preserved. Reviewed set-count reductions for programs without load metadata leave actual weights untouched; numeric load proposals still require trustworthy weight/equipment context.
 - Optionally add a private, multiline note to self for every rep or timed set (up to 1,000 characters). Copying a set clears the new note; coaching apply/undo preserves draft notes.
 - Review, add, edit or clear saved set notes from the active log and expandable recent sessions, with offline native/web persistence and no account requirement.
 - Save an exercise to the active session log.

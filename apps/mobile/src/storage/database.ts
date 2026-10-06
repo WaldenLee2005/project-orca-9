@@ -1,7 +1,7 @@
 import * as SQLite from "expo-sqlite";
 
 const DATABASE_NAME = "orca9.db";
-const DATABASE_VERSION = 9;
+const DATABASE_VERSION = 10;
 const PRELAUNCH_RESET_VERSION = 6;
 const DATABASE_OPEN_TIMEOUT_MS = 8000;
 
@@ -70,6 +70,8 @@ export async function initializeDatabase(database: SQLite.SQLiteDatabase) {
     if (!setColumns.some((column) => column.name === "note")) await database.execAsync("ALTER TABLE set_entries ADD COLUMN note TEXT;");
     const exerciseColumns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(workout_exercises);");
     if (!exerciseColumns.some((column) => column.name === "prescription_json")) await database.execAsync("ALTER TABLE workout_exercises ADD COLUMN prescription_json TEXT;");
+    const sessionColumns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(workout_sessions);");
+    if (!sessionColumns.some((column) => column.name === "load_coaching_enabled")) await database.execAsync("ALTER TABLE workout_sessions ADD COLUMN load_coaching_enabled INTEGER CHECK (load_coaching_enabled IN (0, 1));");
     await ensureProfileColumns(database);
     await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION};`);
   });
@@ -94,6 +96,7 @@ async function ensureCoreTables(database: SQLite.SQLiteDatabase) {
       started_at TEXT NOT NULL,
       completed_at TEXT,
       program_plan_json TEXT,
+      load_coaching_enabled INTEGER CHECK (load_coaching_enabled IN (0, 1)),
       notes TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,

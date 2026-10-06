@@ -12,6 +12,7 @@ Current implementation:
 - The current local profile is cached in memory after the first read/write; clear the cache on sign-out.
 - Actual individual sets are saved as one `set_entries` row each; existing grouped web entries remain readable.
 - Native schema 9 adds nullable `set_entries.note` without resetting current training/profile data. Web keeps its existing key and schema marker. Optional notes are trimmed and limited to 1,000 characters; omitted/blank notes become null.
+- Native schema 10 adds nullable `workout_sessions.load_coaching_enabled`. Web keeps the existing session key/marker and optional flag. New sessions inherit a saved program default (manual sessions default off); older snapshots preserve prior opt-in through retained metadata. Serialized session-toggle writes preserve results, completion state and schedule/program snapshots.
 - `getWorkoutSessionExercises` supports active/completed review; serialized `updateWorkoutSetNote` edits or clears one set without changing measurements, completion timestamps, prescriptions or schedules. Missing targets and failed reads/writes surface errors; private notes are excluded from coaching history.
 - Active workout saves batch set-entry inserts and avoid reloading the full session after each write.
 - Saving a session marks `workout_sessions.completed_at`, leaving completed workout data available for history and progress charts.

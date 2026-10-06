@@ -6,7 +6,7 @@ import { AppState, Platform, Pressable, ScrollView, Text, TextInput, View } from
 import { ScreenHeading } from "../../components/ScreenHeading";
 import { ExerciseBrowser } from "../exercises/ExerciseBrowser";
 import { ProgramExerciseList, type ProgramScrollMetrics } from "./ProgramExerciseList";
-import { getDaySlotLabel, getProgramDayName, getScheduledDayIndex, localDateKey, PROGRAM_LIMITS, type ProgramDay, type ProgramDraft, type TrainingProgram, type ProgramExercise } from "./programModel";
+import { getDaySlotLabel, getProgramDayName, getScheduledDayIndex, isProgramLoadCoachingEnabled, localDateKey, PROGRAM_LIMITS, type ProgramDay, type ProgramDraft, type TrainingProgram, type ProgramExercise } from "./programModel";
 import { emptyProgramDay, ProgramScheduleEditor } from "./ProgramScheduleEditor";
 import { sessionExercises, type CatalogExercise } from "../workouts/repdbSessionExercises";
 import { createLocalId } from "../../storage/database";
@@ -18,6 +18,7 @@ import { ProgramImportScreen } from "./ProgramImportScreen";
 import { StarterProgramLibrary } from "./StarterProgramLibrary";
 import { ProgramDaysOverview } from "./ProgramOverview";
 import { createStarterProgram, STARTER_GUIDANCE, type StarterProgram } from "./starterPrograms";
+import { LoadCoachingToggle } from "../coach/CoachControls";
 
 export default function ProgramsScreen() {
   const { styles, colors, ui } = useThemeStyles(themedStyles);
@@ -102,8 +103,8 @@ export default function ProgramsScreen() {
     if (!program) { setPreviewProgramId(null); setPreviewStarter(null); }
     setImported(false); setImportScheduleConfirmed(false); setStarterName(null);
     const next: ProgramDraft = program
-      ? { id: program.id, name: program.name, schedule: { ...program.schedule }, days: program.days.map((day) => ({ ...day, exercises: day.exercises.map((entry) => ({ ...entry, target: { ...entry.target } })) })) }
-      : { name: "", schedule: { mode: "weekly", startDate: localDateKey() }, days: Array.from({ length: 7 }, emptyProgramDay) };
+      ? { id: program.id, name: program.name, loadCoachingEnabled: isProgramLoadCoachingEnabled(program), schedule: { ...program.schedule }, days: program.days.map((day) => ({ ...day, exercises: day.exercises.map((entry) => ({ ...entry, target: { ...entry.target }, ...(entry.load ? { load: { ...entry.load } } : {}) })) })) }
+      : { name: "", loadCoachingEnabled: false, schedule: { mode: "weekly", startDate: localDateKey() }, days: Array.from({ length: 7 }, emptyProgramDay) };
     baseline.current = JSON.stringify(next);
     scrollMetrics.current.offset = 0;
     setDraft(next); setSelectedDayIndex(0); setPicking(false); setError(null); setNotice(null); setDiscarding(false); setDeleting(null); setFollowConfirm(null);
@@ -246,6 +247,8 @@ export default function ProgramsScreen() {
             placeholder="e.g. My strength program" placeholderTextColor={colors.mutedText} maxLength={PROGRAM_LIMITS.name} editable={!isSaving && !isDragging}
             autoCapitalize="sentences" returnKeyType="done" selectionColor={colors.accent} style={styles.nameInput} />
         </View>
+        <LoadCoachingToggle scope="program" enabled={isProgramLoadCoachingEnabled(draft)} disabled={isSaving || isDragging}
+          onChange={(loadCoachingEnabled) => setDraft((current) => current ? { ...current, loadCoachingEnabled } : current)} />
         <ProgramScheduleEditor draft={draft} onChange={setDraft} selectedIndex={selectedDayIndex} onSelect={setSelectedDayIndex} disabled={isSaving || isDragging} />
         {imported ? <Pressable accessibilityRole="checkbox" accessibilityLabel="Confirm imported schedule and rest days" accessibilityState={{ checked: importScheduleConfirmed }}
           disabled={isSaving || isDragging} onPress={() => setImportScheduleConfirmed(!importScheduleConfirmed)} style={[styles.namePanel, { flexDirection: "row", gap: 12, alignItems: "center" }]}>
@@ -285,6 +288,7 @@ export default function ProgramsScreen() {
       </Pressable>
       <ScreenHeading eyebrow={previewStarter ? "Orca · Starter program" : "Orca · Your program"} title={overview.name} subtitle={scheduleSummary(overview)} />
       <Text style={styles.overviewDate}>Starts {overview.schedule.startDate}</Text>
+      <Text style={styles.caption}>Load coaching {isProgramLoadCoachingEnabled(overview) ? "on" : "off"} for this program</Text>
       <View style={styles.overviewActions}>
         <Action label={isSaving ? "Please wait…" : isActive ? "Active program" : "Activate program"} icon={isActive ? "checkmark-circle" : "play"} primary
           accessibilityLabel={isActive ? `${overview.name} is active` : `Activate ${overview.name}`} disabled={disabled || isActive}

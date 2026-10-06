@@ -4,6 +4,8 @@ Status: proposed, September 24, 2026. Planning only; no app behavior or API prov
 
 Prototype update, September 29, 2026: a local review-only slice is implemented: individual sets/effort, optional per-exercise load settings, readiness and gap handling, today-only proposals with undo, a seven-day summary, a no-write coach sandbox, and a validated import adapter using the existing local parser. This is not completion of every milestone below. No hosted model, permanent program adaptation, or production-grade decision audit has been enabled. See `apps/mobile/README.md` for testing instructions and scope.
 
+October 5 UI update: load coaching now has a single program default and persisted session on/off override. Exercise-specific setup UI is removed; existing explicit load metadata is retained for compatibility. Programs without it can receive reviewed set-count reductions that preserve actual weights, reps/time and notes. No metadata-free numeric load progression is enabled. Weight entry uses an in-box 0.5 lb snapping ruler with native haptics and exact-entry fallback; effort is compact. Schema 10 preserves current training data. Qualified policy review and native acceptance remain release gates.
+
 ## 1. Product direction
 
 Build a coach that helps users decide what to do today, adapts to their actual training, and explains suggested changes. Workout import is one capability; automatic weight increases are another, not the entire product.

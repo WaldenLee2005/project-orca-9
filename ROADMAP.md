@@ -24,7 +24,7 @@ The private [Notion project hub](https://app.notion.com/p/3f0b1348a34d812c832ace
 
 The hub leads with a branching chart of the main release path and concurrent features, with node details and task links. Its [interactive chart backup](docs/notion/Orca%20Roadmap.html) uses the same dated snapshot; refresh it when dates or scope change.
 
-Current code includes charts, individual-set logging, optional per-set notes, weekly consistency and avatar upload. The detailed phase notes below distinguish implemented work from remaining release checks; the current schema is 9 with an additive set-note upgrade. Refer to the feature implementation and `apps/mobile/README.md` before changing behavior.
+Current code includes charts, individual-set logging with a snapping weight ruler, compact effort selection, program/session coaching switches, optional per-set notes, weekly consistency and avatar upload. The detailed phase notes below distinguish implemented work from remaining release checks; schema 10 adds a saved session coaching flag without resetting current data. Refer to the feature implementation and `apps/mobile/README.md` before changing behavior.
 
 ## Requested features
 
@@ -130,7 +130,8 @@ Current progress:
 - Active session data is saved locally in SQLite.
 - Save Session completes the workout in SQLite for future progress/history views.
 - The Session start screen lists recent completed sessions.
-- The live logger uses per-set numeric fields/steppers and copy/add-set controls; earlier ruler controls are not the current logging flow.
+- The live logger uses a swipeable weight ruler with 0.5 lb snapping, sized 0.5/1/5/10 lb ticks and native haptics; exact entry and reps/time steppers remain. Effort fits in one segmented row.
+- Program/session coaching is controlled globally, with persisted session overrides and retained legacy load metadata. Native haptic feel and rebuilt-device accessibility checks remain part of phone acceptance.
 - Nonempty unfinished sessions pause/resume; empty-session exit creates no workout or streak credit.
 - Swipe-to-delete is available for saved exercise rows.
 

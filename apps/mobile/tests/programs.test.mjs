@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
-import { stepGoalValue, changeExerciseTargetKind, validateProgram, validateExerciseTarget, formatExerciseTarget, formatProgramPrescription, parseTrainingProgram, moveProgramExercise, clampDragTranslation, getDragTargetIndex, getPendingProgramExercises, toWorkoutProgramPlan, parseWorkoutProgramPlan, isTrainingProgram, getScheduledDayIndex, getScheduledRestDates, reviseSchedule, dateOrdinal, localDateKey, PROGRAM_DAY_CHOICES } from "../src/features/programs/programModel.ts";
+import { stepGoalValue, changeExerciseTargetKind, validateProgram, validateExerciseTarget, formatExerciseTarget, formatProgramPrescription, parseTrainingProgram, moveProgramExercise, clampDragTranslation, getDragTargetIndex, getPendingProgramExercises, toWorkoutProgramPlan, parseWorkoutProgramPlan, isTrainingProgram, getScheduledDayIndex, getScheduledRestDates, reviseSchedule, dateOrdinal, localDateKey, isProgramLoadCoachingEnabled, isPlanLoadCoachingEnabled, PROGRAM_DAY_CHOICES } from "../src/features/programs/programModel.ts";
 
 const state = { platform: { OS: "web" }, values: new Map(), sql: null, nextId: 0, failWrite: false };
 state.storage = {
@@ -36,7 +36,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (context.parentURL?.endsWith("/storage/database.ts") && specifier === "expo-sqlite") {
     return { shortCircuit: true, url: "data:text/javascript,export const openDatabaseAsync = async () => globalThis.__orcaProgramsTest.database;" };
   }
-  if (/\/(programsRepository|workoutsRepository|streaksRepository|trainingStorage)\.ts$/.test(context.parentURL ?? "") && modules[specifier]) {
+  if (/\/(programsRepository|workoutsRepository|streaksRepository|trainingStorage)\.ts(?:\?.*)?$/.test(context.parentURL ?? "") && modules[specifier]) {
     return { shortCircuit: true, url: `data:text/javascript,${encodeURIComponent(modules[specifier])}` };
   }
   return nextResolve(specifier, context);
@@ -58,6 +58,101 @@ function setup(t, platform) {
   state.sql = new DatabaseSync(":memory:"); state.sql.exec("PRAGMA foreign_keys = ON;"); state.sql.exec(schema);
   t.after(() => state.sql.close());
 }
+
+test("program-wide coaching defaults off, honors explicit off, and preserves existing load metadata", () => {
+  const plain = draft();
+  assert.equal(isProgramLoadCoachingEnabled(plain), false);
+  const loaded = withExercises(plain, [{ ...entry("loaded"), load: { weight: 100, increment: 5, unit: "lb", convention: "total", equipmentKey: "Home barbell" } }]);
+  assert.equal(isProgramLoadCoachingEnabled(loaded), true, "existing opt-in is retained");
+  for (const enabled of [true, false]) {
+    const valid = validateProgram({ ...loaded, loadCoachingEnabled: enabled });
+    assert.equal(isProgramLoadCoachingEnabled(valid), enabled);
+    const saved = { ...valid, id: "program", createdAt: "2026-09-01", updatedAt: "2026-09-01" };
+    const parsed = parseTrainingProgram(JSON.parse(JSON.stringify(saved)));
+    assert.equal(parsed.loadCoachingEnabled, enabled);
+    assert.deepEqual(parsed.days[0].exercises[0].load, loaded.days[0].exercises[0].load);
+    const plan = toWorkoutProgramPlan(saved);
+    assert.equal(isPlanLoadCoachingEnabled(plan), enabled);
+    assert.equal(parseWorkoutProgramPlan(JSON.parse(JSON.stringify(plan))).loadCoachingEnabled, enabled);
+  }
+  assert.throws(() => validateProgram({ ...plain, loadCoachingEnabled: "false" }), /on or off/);
+  assert.equal(parseWorkoutProgramPlan({ ...toWorkoutProgramPlan({ ...plain, id: "program" }), loadCoachingEnabled: 1 }), null);
+});
+
+for (const platform of ["web", "ios"]) {
+  test(`${platform}: one coaching setting covers the program and session override survives reload without changing work`, async (t) => {
+    setup(t, platform);
+    const program = await programs.saveTrainingProgram({ ...draft(), loadCoachingEnabled: true });
+    const session = await workouts.createWorkoutSession({ programPlan: toWorkoutProgramPlan(program) });
+    assert.equal(session.loadCoachingEnabled, true);
+    const recorded = await workouts.addExerciseToWorkoutSession({ sessionId: session.id, exercise: { id: "bench", name: "Bench Press", image: 1 }, sets: 1, reps: 8, weight: 100.25,
+      actualSets: [{ reps: 8, weight: 100.25, effort: "hard", note: "Keep my actual set" }] });
+    const before = await workouts.getActiveWorkoutSession();
+    const scheduleBefore = await programs.getProgramScheduleHistory();
+    await workouts.setWorkoutSessionLoadCoaching(session.id, false);
+    const reloaded = await import(`../src/storage/workoutsRepository.ts?coaching-reload-${platform}`);
+    const restored = await reloaded.getActiveWorkoutSession();
+    assert.equal(restored.loadCoachingEnabled, false);
+    assert.deepEqual(restored.exercises, before.exercises);
+    assert.deepEqual(restored.programPlan, before.programPlan, "the immutable prescription stays intact");
+    assert.equal(restored.startedAt, before.startedAt);
+    assert.equal((await programs.getTrainingProgram(program.id)).loadCoachingEnabled, true);
+    assert.deepEqual(await programs.getProgramScheduleHistory(), scheduleBefore);
+    await programs.saveTrainingProgram({ ...program, loadCoachingEnabled: false });
+    await reloaded.setWorkoutSessionLoadCoaching(session.id, true);
+    assert.equal((await reloaded.createWorkoutSession({ followActiveProgram: true })).loadCoachingEnabled, true, "resuming honors the session override");
+    assert.deepEqual((await reloaded.getActiveWorkoutSession()).exercises[0], before.exercises[0]);
+    await reloaded.completeWorkoutSession(session.id);
+    const history = await reloaded.getCompletedWorkoutSessions();
+    await assert.rejects(reloaded.setWorkoutSessionLoadCoaching(session.id, false), /no longer active/);
+    assert.deepEqual(await reloaded.getCompletedWorkoutSessions(), history);
+    assert.equal((await reloaded.createWorkoutSession({ programPlan: toWorkoutProgramPlan(await programs.getTrainingProgram(program.id)) })).loadCoachingEnabled, false, "future sessions use the edited program");
+  });
+
+  test(`${platform}: manual sessions default off and failed global-setting writes retain the previous value and allow retry`, async (t) => {
+    setup(t, platform);
+    const session = await workouts.createWorkoutSession();
+    assert.equal(session.loadCoachingEnabled, false);
+    state.failWrite = true;
+    await assert.rejects(workouts.setWorkoutSessionLoadCoaching(session.id, true), /Disk full/);
+    assert.deepEqual(await workouts.getActiveWorkoutSession(), session);
+    state.failWrite = false;
+    await Promise.all([workouts.setWorkoutSessionLoadCoaching(session.id, true), workouts.setWorkoutSessionLoadCoaching(session.id, false)]);
+    assert.equal((await workouts.getActiveWorkoutSession()).loadCoachingEnabled, false, "serialized switches retain the final choice");
+    await workouts.setWorkoutSessionLoadCoaching(session.id, true);
+    assert.equal((await workouts.getActiveWorkoutSession()).loadCoachingEnabled, true);
+    await assert.rejects(workouts.setWorkoutSessionLoadCoaching("missing", false), /no longer active/);
+    await assert.rejects(workouts.setWorkoutSessionLoadCoaching(session.id, "false"), /on or off/);
+  });
+}
+
+test("SQLite 9 → 10 adds the session coaching setting transactionally without rewriting training data", async (t) => {
+  setup(t, "ios");
+  const load = { weight: 100, increment: 5, unit: "lb", convention: "total", equipmentKey: "Home barbell" };
+  const saved = await programs.saveTrainingProgram(withExercises(draft(), [{ ...entry("loaded"), load }]));
+  const session = await workouts.createWorkoutSession({ programPlan: toWorkoutProgramPlan(saved) });
+  state.sql.exec("ALTER TABLE workout_sessions DROP COLUMN load_coaching_enabled; PRAGMA user_version = 9;");
+  const before = state.sql.prepare("SELECT * FROM workout_sessions").all();
+  const { initializeDatabase } = await import("../src/storage/database.ts");
+  const failing = { ...state.database, async execAsync(sql) {
+    if (sql.includes("PRAGMA user_version = 10")) throw new Error("Migration interrupted");
+    await state.database.execAsync(sql);
+  } };
+  await assert.rejects(initializeDatabase(failing), /Migration interrupted/);
+  assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 9);
+  assert.deepEqual(state.sql.prepare("SELECT * FROM workout_sessions").all(), before);
+  await initializeDatabase(state.database);
+  const restored = await workouts.getActiveWorkoutSession();
+  assert.equal(restored.id, session.id);
+  assert.equal(restored.loadCoachingEnabled, true, "old opted-in program sessions retain their setting");
+  assert.deepEqual(restored.programPlan, session.programPlan);
+  assert.deepEqual(await programs.getTrainingProgram(saved.id), saved);
+  assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 10);
+  for (const [column, value] of Object.entries(before[0])) assert.deepEqual(state.sql.prepare("SELECT * FROM workout_sessions").get()[column], value);
+  await workouts.setWorkoutSessionLoadCoaching(session.id, false);
+  await initializeDatabase(state.database);
+  assert.equal((await workouts.getActiveWorkoutSession()).loadCoachingEnabled, false);
+});
 
 for (const platform of ["web", "ios"]) {
   test(`${platform}: exiting an empty planned session allows a fresh start without completing work or changing the program`, async (t) => {
@@ -398,7 +493,7 @@ test("prelaunch SQLite reset clears training once, preserves profiles, and rolls
   assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 5);
   assert.equal(state.sql.prepare("SELECT COUNT(*) AS n FROM set_entries").get().n, 1, "failed reset rolls back old data");
   await initializeDatabase(state.database);
-  assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 9);
+  assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 10);
   for (const table of ["workout_sessions", "workout_exercises", "set_entries", "consistency_days", "program_library"]) assert.equal(state.sql.prepare("SELECT COUNT(*) AS n FROM " + table).get().n, 0);
   assert.equal(state.sql.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'training_programs'").get().n, 0);
   assert.equal(state.sql.prepare("SELECT display_name FROM user_profiles WHERE id = 'profile'").get().display_name, "Kept");
@@ -414,7 +509,7 @@ const scheduled = (mode = "cycle", startDate = "2026-09-01", kinds = ["training"
     exercises: kind === "training" ? [entry(`entry-${index}`, index ? "row" : "bench", index + 1, 8 + index)] : [] }))
 });
 
-test("SQLite 7 → 9 preserves sets, profiles, prescriptions and rest while adding optional coaching metadata", async (t) => {
+test("SQLite 7 → 10 preserves sets, profiles, prescriptions and rest while adding optional coaching metadata", async (t) => {
   setup(t, "ios");
   const saved = await programs.saveTrainingProgram(draft());
   const session = await workouts.createWorkoutSession();
@@ -428,7 +523,7 @@ test("SQLite 7 → 9 preserves sets, profiles, prescriptions and rest while addi
   assert.equal(state.sql.prepare("PRAGMA table_info(set_entries)").all().some((column) => column.name === "effort"), false, "partial migration rolls back");
   await initializeDatabase(state.database);
   await initializeDatabase(state.database);
-  assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 9);
+  assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 10);
   assert.deepEqual(await programs.getTrainingProgram(saved.id), saved);
   const restored = await workouts.getActiveWorkoutSession();
   assert.equal(restored.exercises[0].actualSets.length, 3);
@@ -460,7 +555,7 @@ test("actual-set validation rejects malformed feedback, mixed measurement types,
   for (const sets of [[], [{ reps: 8, weight: NaN }], [{ reps: 8, weight: 100, effort: "unknown-command" }], [{ reps: 8, weight: 100, warmup: "false" }], [{ reps: 8, weight: 100 }, { reps: 0, weight: 0, durationSeconds: 30 }]]) assert.throws(() => workouts.validateActualSets(sets));
 });
 
-test("SQLite 6 → 9 adds durations and coaching transactionally without resetting current workouts, programs or rest days", async (t) => {
+test("SQLite 6 → 10 adds durations and coaching transactionally without resetting current workouts, programs or rest days", async (t) => {
   setup(t, "ios");
   state.sql.exec("ALTER TABLE set_entries DROP COLUMN duration_seconds; PRAGMA user_version = 6;");
   const program = await programs.saveTrainingProgram(draft());
@@ -477,7 +572,7 @@ test("SQLite 6 → 9 adds durations and coaching transactionally without resetti
   assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 6);
   assert.equal(state.sql.prepare("SELECT COUNT(*) AS n FROM set_entries").get().n, 1);
   await initializeDatabase(state.database);
-  assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 9);
+  assert.equal(state.sql.prepare("PRAGMA user_version").get().user_version, 10);
   assert.deepEqual(await programs.getTrainingProgram(program.id), program);
   const restored = await workouts.getActiveWorkoutSession();
   assert.equal(restored.exercises[0].reps, 8);

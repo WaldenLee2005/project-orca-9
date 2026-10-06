@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 import { type SessionExercise, sessionExercises } from "../features/workouts/repdbSessionExercises";
 import { compactLocalDatabase, createLocalId, getDatabase } from "./database";
 import { getCachedCurrentUserProfile, warmCurrentUserProfileCache } from "./profilesRepository";
-import { getScheduledDayIndex, parseWorkoutProgramPlan, toWorkoutProgramPlan, validateExerciseTarget, validateProgramLoad, type ProgramExercise, type WorkoutProgramPlan } from "../features/programs/programModel";
+import { getScheduledDayIndex, isPlanLoadCoachingEnabled, parseWorkoutProgramPlan, toWorkoutProgramPlan, validateExerciseTarget, validateProgramLoad, type ProgramExercise, type WorkoutProgramPlan } from "../features/programs/programModel";
 import { getProgramLibrary } from "./programsRepository";
 import { ensureWebTrainingStorage } from "./trainingStorage";
 import { emitTrainingChange } from "./trainingChanges";
@@ -38,6 +38,7 @@ export type ActiveWorkoutSession = {
   startedAt: string;
   exercises: StoredSessionExercise[];
   programPlan?: WorkoutProgramPlan | null;
+  loadCoachingEnabled?: boolean;
 };
 
 export type CompletedWorkoutSession = {
@@ -88,6 +89,7 @@ type WorkoutSessionRow = {
   id: string;
   started_at: string;
   program_plan_json: string | null;
+  load_coaching_enabled: number | null;
 };
 
 type CompletedWorkoutSessionRow = {
@@ -150,7 +152,7 @@ export async function getActiveWorkoutSession() {
 
   const database = await getDatabase();
   const session = await database.getFirstAsync<WorkoutSessionRow>(
-    `SELECT id, started_at, program_plan_json
+    `SELECT id, started_at, program_plan_json, load_coaching_enabled
      FROM workout_sessions
      WHERE completed_at IS NULL
      ORDER BY started_at DESC
@@ -161,11 +163,13 @@ export async function getActiveWorkoutSession() {
     return null;
   }
 
+  const programPlan = decodeProgramPlan(session.program_plan_json);
   return {
     id: session.id,
     startedAt: session.started_at,
     exercises: await getWorkoutExercises(session.id),
-    programPlan: decodeProgramPlan(session.program_plan_json)
+    programPlan,
+    loadCoachingEnabled: session.load_coaching_enabled == null ? isPlanLoadCoachingEnabled(programPlan) : session.load_coaching_enabled === 1
   };
 }
 
@@ -478,6 +482,26 @@ export async function createWorkoutSession(input?: CreateSessionInput): Promise<
   return serializeWorkoutMutation(() => createStoredWorkoutSession(input));
 }
 
+/** A session override applies to every exercise without changing its saved program or results. */
+export async function setWorkoutSessionLoadCoaching(sessionId: string, enabled: boolean): Promise<void> {
+  if (typeof enabled !== "boolean") throw new Error("Choose whether load coaching is on or off.");
+  return serializeWorkoutMutation(async () => {
+    const now = new Date().toISOString();
+    if (Platform.OS === "web") {
+      const sessions = await getWebWorkoutSessions(true);
+      const index = sessions.findIndex((session) => session.id === sessionId && session.completedAt === null);
+      if (index < 0) throw new Error("This workout is no longer active.");
+      const next = [...sessions];
+      next[index] = { ...sessions[index], loadCoachingEnabled: enabled, updatedAt: now };
+      await saveWebWorkoutSessions(next);
+    } else {
+      const database = await getDatabase();
+      const result = await database.runAsync("UPDATE workout_sessions SET load_coaching_enabled = ?, updated_at = ? WHERE id = ? AND completed_at IS NULL;", [enabled ? 1 : 0, now, sessionId]);
+      if (result.changes !== 1) throw new Error("This workout is no longer active.");
+    }
+  });
+}
+
 async function createStoredWorkoutSession(input?: CreateSessionInput): Promise<ActiveWorkoutSession> {
   const explicitPlan = input && "programPlan" in input;
   let programPlan = explicitPlan ? parseWorkoutProgramPlan(input.programPlan) : null;
@@ -514,14 +538,15 @@ async function createStoredWorkoutSession(input?: CreateSessionInput): Promise<A
        profile_id,
        started_at,
        program_plan_json,
+       load_coaching_enabled,
        created_at,
        updated_at
      )
-     VALUES (?, ?, ?, ?, ?, ?);`,
-    [id, profile?.id ?? null, now, programPlan ? JSON.stringify(programPlan) : null, now, now]
+     VALUES (?, ?, ?, ?, ?, ?, ?);`,
+    [id, profile?.id ?? null, now, programPlan ? JSON.stringify(programPlan) : null, isPlanLoadCoachingEnabled(programPlan) ? 1 : 0, now, now]
   );
 
-  return { id, startedAt: now, exercises: [], programPlan };
+  return { id, startedAt: now, exercises: [], programPlan, loadCoachingEnabled: isPlanLoadCoachingEnabled(programPlan) };
 }
 
 type AddExerciseInput = {
@@ -860,7 +885,8 @@ async function createWebWorkoutSession(programPlan: WorkoutProgramPlan | null) {
     completedAt: null,
     updatedAt: now,
     exercises: [],
-    programPlan
+    programPlan,
+    loadCoachingEnabled: isPlanLoadCoachingEnabled(programPlan)
   };
 
   await saveWebWorkoutSessions([session, ...sessions]);
@@ -934,11 +960,13 @@ async function completeWebWorkoutSession(sessionId: string) {
 }
 
 function toActiveWorkoutSession(session: WebWorkoutSession): ActiveWorkoutSession {
+  const programPlan = parseWorkoutProgramPlan(session.programPlan);
   return {
     id: session.id,
     startedAt: session.startedAt,
     exercises: session.exercises.map((exercise) => ({ ...exercise, actualSets: getActualSets(exercise) })),
-    programPlan: parseWorkoutProgramPlan(session.programPlan)
+    programPlan,
+    loadCoachingEnabled: session.loadCoachingEnabled ?? isPlanLoadCoachingEnabled(programPlan)
   };
 }
 
@@ -951,6 +979,7 @@ function isWebWorkoutSession(value: unknown): value is WebWorkoutSession {
   return (
     typeof session.id === "string" &&
     typeof session.startedAt === "string" &&
+    (session.loadCoachingEnabled === undefined || typeof session.loadCoachingEnabled === "boolean") &&
     Array.isArray(session.exercises)
   );
 }

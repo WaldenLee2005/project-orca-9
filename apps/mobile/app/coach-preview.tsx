@@ -49,7 +49,7 @@ export default function CoachPreview() {
       <Text style={s.copy}>Review-only prototype. Policies need qualified review before general release. No model is connected.</Text>
     </View>
     <CoachButton label={logger ? "Hide demo set logger" : "Try the real set logger without saving data"} onPress={() => { setLogger(!logger); setSaved(""); }} />
-    {logger ? <CoachedSetLogger key={scenario} exerciseId={example.exerciseId} entry={example} readiness={readiness} onReadiness={setReadiness} saving={false}
+    {logger ? <CoachedSetLogger key={scenario} exerciseId={example.exerciseId} entry={example} readiness={readiness} onReadiness={setReadiness} coachingEnabled saving={false}
       loadHistory={async () => history} onSave={async (sets) => setSaved(`Demo only: ${sets.map((set, index) => `set ${index + 1}: ${set.reps} reps at ${set.weight} lb`).join("; ")}. Nothing written to workout history.`)} /> : null}
     {saved ? <Text accessibilityLiveRegion="polite" style={s.copy}>{saved}</Text> : null}
   </ScrollView>;

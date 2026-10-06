@@ -1,5 +1,13 @@
 # Decision Log
 
+## 2026-10-05: Simplify Session Coaching And Make Weight Entry Tactile
+
+Decision: Replace exercise-specific load-coaching setup with a saved program on/off default and a persisted session override. Preserve existing load/equipment metadata and training records. Off hides the session's coaching controls; on still requires review before applying changes. Without explicit load context, the prototype may suggest fewer sets while retaining individual manual weights; it never guesses loads or equipment steps.
+
+Use a horizontal ruler inside each weight box, snapping to 0.5 lb with increasingly large marks at 1, 5 and 10 lb, a fixed marker and native tick haptics. Keep exact decimal entry and accessible adjustment, and preserve off-grid existing weights until the user changes them. Effort uses one compact optional segmented row. Native schema 10 adds only a nullable session coaching flag; existing notes, results, profiles and schedules survive.
+
+Reason: The requested gym flow should need fewer setup controls and less typing. Device haptic feel still needs physical-device acceptance; existing coaching review/release gates remain.
+
 ## 2026-10-04: Make Notes To Self Optional For Each Actual Set
 
 Decision: Add a collapsed note editor to every rep or timed set, with up to 1,000 characters of private multiline text. Review/add/edit/clear saved notes in the active log and recent-session details. Blank notes become null; copying measurements does not copy a note. Coaching apply/undo preserves draft notes, while coaching history excludes their text.
