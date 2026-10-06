@@ -27,8 +27,10 @@ import {
   deleteWorkoutExercise,
   getActiveWorkoutSession,
   getCompletedWorkoutSessions,
+  getCompletedProgramDays,
   getWorkoutSessionExercises,
   CompletedWorkoutSession,
+  type CompletedProgramDay,
   StoredSessionExercise,
   validateActualSets,
   getActualSets,
@@ -84,6 +86,7 @@ export default function WorkoutsScreen() {
   const [isSavingSession, setIsSavingSession] = useState(false);
   const [streak, setStreak] = useState<StreakSummary | null>(null);
   const [scheduledProgram, setScheduledProgram] = useState<TrainingProgram | null>(null);
+  const [completedProgramDays, setCompletedProgramDays] = useState<CompletedProgramDay[]>([]);
   const [scheduleDate, setScheduleDate] = useState(localDateKey());
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [selectedExercise, setSelectedExercise] = useState<SessionExercise | null>(null);
@@ -98,7 +101,7 @@ export default function WorkoutsScreen() {
     const request = ++trainingRefreshRequest.current;
     const date = localDateKey();
     try {
-      const [summary, library] = await Promise.all([getStreakSummary(), getProgramLibrary()]);
+      const [summary, library, completedDays] = await Promise.all([getStreakSummary(), getProgramLibrary(), getCompletedProgramDays(date)]);
       if (!isTrainingScreenFocused.current || request !== trainingRefreshRequest.current) return;
       if (date !== localDateKey()) {
         await refresh();
@@ -108,9 +111,10 @@ export default function WorkoutsScreen() {
       setScheduleDate(date);
       setScheduleError(null);
       setScheduledProgram(library.programs.find((program) => program.id === library.activeProgramId) ?? null);
+      setCompletedProgramDays(completedDays);
     } catch {
       if (isTrainingScreenFocused.current && request === trainingRefreshRequest.current) {
-        setScheduleError("Could not refresh your schedule and streak. Return to this tab to retry.");
+        setScheduleError("Could not refresh your schedule, workout status and streak. Return to this tab to retry.");
       }
     }
   }, []);
@@ -228,6 +232,8 @@ export default function WorkoutsScreen() {
 
   const pendingProgramExercises = getPendingProgramExercises(programPlan, loggedExercises);
   const scheduledDay = scheduledProgram?.days[getScheduledDayIndex(scheduledProgram.schedule, scheduledProgram.days.length, scheduleDate)];
+  const scheduledDayCompleted = scheduledDay?.kind === "training" && completedProgramDays.some((day) =>
+    day.programId === scheduledProgram?.id && day.dayId === scheduledDay.id);
 
   async function saveRestDay() {
     try {
@@ -465,7 +471,12 @@ export default function WorkoutsScreen() {
         });
       }
 
-      await completeWorkoutSession(resolvedSessionId);
+      const completedSession = await completeWorkoutSession(resolvedSessionId);
+      if (programPlan && localDateKey(new Date(completedSession.completedAt)) === scheduleDate) {
+        const completedDay = { programId: programPlan.programId, dayId: programPlan.dayId };
+        setCompletedProgramDays((current) => current.some((day) => day.programId === completedDay.programId && day.dayId === completedDay.dayId)
+          ? current : [...current, completedDay]);
+      }
       setSessionId(null);
       setSessionStartedAt(null);
       setLoggedExercises([]);
@@ -534,10 +545,10 @@ export default function WorkoutsScreen() {
         <ScreenHeading eyebrow={new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} title="Today" />
         <View style={styles.startHero}>
           <View style={styles.startHeader}>
-            <View style={styles.heroTopRow}><Text style={[styles.eyebrow, { color: theme.colors.mutedText }]}>{sessionStartedAt ? "UNFINISHED SESSION" : scheduledProgram ? "YOUR PROGRAM" : "YOUR SESSION"}</Text><Ionicons name="calendar-outline" size={20} color={theme.colors.mutedText} /></View>
+            <View style={styles.heroTopRow}><Text style={[styles.eyebrow, { color: theme.colors.mutedText }]}>{sessionStartedAt ? "UNFINISHED SESSION" : scheduledDayCompleted ? "COMPLETED TODAY" : scheduledProgram ? "YOUR PROGRAM" : "YOUR SESSION"}</Text><Ionicons name={scheduledDayCompleted && !sessionStartedAt ? "checkmark-circle-outline" : "calendar-outline"} size={20} color={theme.colors.mutedText} /></View>
             <Text style={[styles.startTitle, { color: theme.colors.text }]}>{sessionStartedAt ? programPlan?.programName ?? "Your workout" : scheduledDay && scheduledProgram ? getProgramDayName(scheduledProgram, scheduledDay) : "Ready to train?"}</Text>
             <Text style={[styles.startCopy, { color: theme.colors.secondaryText }]}>
-              {sessionStartedAt ? `${programPlan?.dayName ? `${programPlan.dayName} · ` : ""}${loggedExercises.length} ${loggedExercises.length === 1 ? "exercise" : "exercises"} saved. Your unfinished workout is ready to resume.` : scheduledDay?.kind === "training" ? `${scheduledProgram!.name} · ${scheduledDay.exercises.length} exercises · ${scheduledDay.exercises.reduce((sum, entry) => sum + entry.sets, 0)} sets` : scheduledDay?.kind === "rest" ? `${scheduledProgram!.name} · Scheduled recovery. Your streak is protected. You can still start an extra workout.` : scheduledProgram ? `Your program starts ${scheduledProgram.schedule.startDate}. Until then, you can log an unplanned workout.` : "Choose your exercises and record each completed set. No account required."}
+              {sessionStartedAt ? `${programPlan?.dayName ? `${programPlan.dayName} · ` : ""}${loggedExercises.length} ${loggedExercises.length === 1 ? "exercise" : "exercises"} saved. Your unfinished workout is ready to resume.` : scheduledDayCompleted ? `${scheduledProgram!.name} · Today's workout is saved. You can log an extra workout without repeating the program day.` : scheduledDay?.kind === "training" ? `${scheduledProgram!.name} · ${scheduledDay.exercises.length} exercises · ${scheduledDay.exercises.reduce((sum, entry) => sum + entry.sets, 0)} sets` : scheduledDay?.kind === "rest" ? `${scheduledProgram!.name} · Scheduled recovery. Your streak is protected. You can still start an extra workout.` : scheduledProgram ? `Your program starts ${scheduledProgram.schedule.startDate}. Until then, you can log an unplanned workout.` : "Choose your exercises and record each completed set. No account required."}
             </Text>
             {sessionNotice ? <Text style={[styles.noticeText, { color: theme.colors.secondaryText }]}>{sessionNotice}</Text> : null}
             {storageError ? <Text style={[styles.errorText, { color: theme.colors.accent }]}>{storageError}</Text> : null}
@@ -546,7 +557,7 @@ export default function WorkoutsScreen() {
           <Pressable
             accessibilityRole="button"
             disabled={!isSessionReady || isStartingSession}
-            onPress={() => { void startSession(); }}
+            onPress={() => { void startSession(!scheduledDayCompleted); }}
             style={({ pressed }) => [
               styles.primaryButton,
               {
@@ -556,9 +567,9 @@ export default function WorkoutsScreen() {
             ]}
           >
             <Ionicons name="play" size={18} color={theme.colors.onAccent} />
-            <Text style={[styles.primaryButtonText, { color: theme.colors.onAccent }]}>{isStartingSession ? "Opening workout…" : isSessionReady ? sessionStartedAt ? "Resume workout" : scheduledDay?.kind === "rest" ? "Start an extra workout" : "Start workout" : "Loading session…"}</Text>
+            <Text style={[styles.primaryButtonText, { color: theme.colors.onAccent }]}>{isStartingSession ? "Opening workout…" : isSessionReady ? sessionStartedAt ? "Resume workout" : scheduledDayCompleted || scheduledDay?.kind === "rest" ? "Start an extra workout" : "Start workout" : "Loading session…"}</Text>
           </Pressable>
-          {!sessionStartedAt && scheduledDay?.kind === "training" ? <Pressable
+          {!sessionStartedAt && scheduledDay?.kind === "training" && !scheduledDayCompleted ? <Pressable
             accessibilityRole="button"
             accessibilityHint="Choose exercises yourself for this session. Your active program stays selected."
             disabled={!isSessionReady || isStartingSession}
@@ -569,7 +580,7 @@ export default function WorkoutsScreen() {
           </Pressable> : null}
         </View>
 
-        {!sessionStartedAt && scheduledDay?.kind === "training" ? <View style={styles.plannedSection}>
+        {!sessionStartedAt && scheduledDay?.kind === "training" && !scheduledDayCompleted ? <View style={styles.plannedSection}>
           <View style={styles.heroTopRow}><Text style={styles.programQueueTitle}>Planned exercises</Text><Text style={styles.programQueueHint}>Today</Text></View>
           <View style={styles.plannedGroup}>{scheduledDay.exercises.map((entry, index) => <View key={entry.id} style={[styles.plannedRow, index > 0 && styles.rowDivider]}>
             <View style={{ flex: 1, gap: 5 }}><Text style={styles.programQueueName}>{entry.exerciseName}</Text><Text style={styles.programQueueHint}>{formatProgramPrescription(entry)}</Text></View>

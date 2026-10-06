@@ -1,5 +1,13 @@
 # Decision Log
 
+## 2026-10-05: Retire A Completed Program Day Until Tomorrow
+
+Decision: A nonempty workout completed on the current local date satisfies the program/day IDs in its saved plan snapshot. Show **Completed today**, remove that day's planned exercise preview and repeat launch actions, and offer **Start an extra workout** as manual tracking. Recheck stored completion when creating a session; unfinished workouts still resume intact. The active program and calendar-based schedule remain unchanged.
+
+Paused, empty, cancelled, manual and other program/day workouts do not satisfy the day. Saving a partial planned workout still completes its day under the existing Save Session rule. A new local date makes the scheduled day eligible normally; no automatic cycle advance, migration or history reset is needed.
+
+Reason: After saving today's program workout, Session should stop presenting the same plan as unfinished work while still allowing an additional workout.
+
 ## 2026-10-05: Start Weight Entry At The Last Saved Working Set
 
 Decision: Use the exact weight of the newest saved exercise entry's final eligible working rep set as the default, including saved actual work in unfinished sessions. Keep completed-workout recent averages as an explicit shortcut. Resolve repeat entries by save time and persisted exercise order; do not expire the last saved weight after 90 days or cap its feed at 120 recent sessions.

@@ -82,6 +82,7 @@ test("program-wide coaching defaults off, honors explicit off, and preserves exi
 for (const platform of ["web", "ios"]) {
   test(`${platform}: one coaching setting covers the program and session override survives reload without changing work`, async (t) => {
     setup(t, platform);
+    t.mock.timers.enable({ apis: ["Date"], now: new Date(2026, 8, 7, 12).getTime() });
     const program = await programs.saveTrainingProgram({ ...draft(), loadCoachingEnabled: true });
     const session = await workouts.createWorkoutSession({ programPlan: toWorkoutProgramPlan(program) });
     assert.equal(session.loadCoachingEnabled, true);
@@ -106,6 +107,7 @@ for (const platform of ["web", "ios"]) {
     const history = await reloaded.getCompletedWorkoutSessions();
     await assert.rejects(reloaded.setWorkoutSessionLoadCoaching(session.id, false), /no longer active/);
     assert.deepEqual(await reloaded.getCompletedWorkoutSessions(), history);
+    t.mock.timers.setTime(new Date(2026, 8, 8, 12).getTime());
     assert.equal((await reloaded.createWorkoutSession({ programPlan: toWorkoutProgramPlan(await programs.getTrainingProgram(program.id)) })).loadCoachingEnabled, false, "future sessions use the edited program");
   });
 
@@ -587,6 +589,7 @@ test("SQLite 6 → 10 adds durations and coaching transactionally without resett
 for (const platform of ["web", "ios"]) {
   test(`${platform}: range/time targets persist, snapshots are independent, and timed work never generates rep-based metrics`, async (t) => {
     setup(t, platform);
+    t.mock.timers.enable({ apis: ["Date"], now: new Date(2026, 8, 7, 12).getTime() });
     const ranged = { ...entry("range"), target: { kind: "repRange", min: 8, max: 12 } };
     const timed = { ...entry("timed", "plank"), target: { kind: "duration", seconds: 90 } };
     const saved = await programs.saveTrainingProgram(withExercises(draft(), [ranged, timed]));
@@ -615,6 +618,7 @@ for (const platform of ["web", "ios"]) {
     assert.equal(history.totalSets, 3);
     assert.equal(history.totalVolume, 0);
     assert.equal((await streaks.getStreakSummary()).todayStatus, "workout");
+    t.mock.timers.setTime(new Date(2026, 8, 8, 12).getTime());
     const mixed = await workouts.createWorkoutSession({ programPlan: toWorkoutProgramPlan(saved) });
     await workouts.addExerciseToWorkoutSession({ ...base, sessionId: mixed.id, durationSeconds: 90 });
     await workouts.addExerciseToWorkoutSession({ sessionId: mixed.id, exercise: { id: "bench", name: "Bench Press", image: 1 }, sets: 2, reps: 7, weight: 100, programEntryId: "range" });

@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 import { type SessionExercise, sessionExercises } from "../features/workouts/repdbSessionExercises";
 import { compactLocalDatabase, createLocalId, getDatabase } from "./database";
 import { getCachedCurrentUserProfile, warmCurrentUserProfileCache } from "./profilesRepository";
-import { getScheduledDayIndex, isPlanLoadCoachingEnabled, parseWorkoutProgramPlan, toWorkoutProgramPlan, validateExerciseTarget, validateProgramLoad, type ProgramExercise, type WorkoutProgramPlan } from "../features/programs/programModel";
+import { dateOrdinal, getScheduledDayIndex, isPlanLoadCoachingEnabled, localDateKey, parseWorkoutProgramPlan, toWorkoutProgramPlan, validateExerciseTarget, validateProgramLoad, type ProgramExercise, type WorkoutProgramPlan } from "../features/programs/programModel";
 import { getProgramLibrary } from "./programsRepository";
 import { ensureWebTrainingStorage } from "./trainingStorage";
 import { emitTrainingChange } from "./trainingChanges";
@@ -50,6 +50,8 @@ export type CompletedWorkoutSession = {
   totalVolume: number;
   totalDurationSeconds: number;
 };
+
+export type CompletedProgramDay = { programId: string; dayId: string };
 
 export type ProgressVolumePoint = {
   id: string;
@@ -260,6 +262,37 @@ export async function getCompletedWorkoutSessions(limit = 8) {
     totalVolume: row.total_volume,
     totalDurationSeconds: row.total_duration_seconds
   }));
+}
+
+/** Actual completed workouts mark their saved program day on the completion's local date. */
+export async function getCompletedProgramDays(date = localDateKey()): Promise<CompletedProgramDay[]> {
+  if (!Number.isFinite(dateOrdinal(date))) throw new Error("The device date is invalid.");
+  const completed = new Map<string, CompletedProgramDay>();
+  const collect = (completedAt: string, programPlan: WorkoutProgramPlan | null) => {
+    const timestamp = new Date(completedAt);
+    if (!programPlan || !Number.isFinite(timestamp.getTime()) || timestamp.getTime() > Date.now() || localDateKey(timestamp) !== date) return;
+    const { programId, dayId } = programPlan;
+    completed.set(JSON.stringify([programId, dayId]), { programId, dayId });
+  };
+  if (Platform.OS === "web") {
+    for (const session of await getWebWorkoutSessions(true)) {
+      if (session.completedAt && session.exercises.length) collect(session.completedAt, parseWorkoutProgramPlan(session.programPlan));
+    }
+  } else {
+    const database = await getDatabase();
+    const rows = await database.getAllAsync<{ completed_at: string; program_plan_json: string }>(
+      `SELECT workout_sessions.completed_at, workout_sessions.program_plan_json
+       FROM workout_sessions
+       WHERE workout_sessions.completed_at IS NOT NULL AND workout_sessions.program_plan_json IS NOT NULL
+         AND EXISTS (
+           SELECT 1 FROM workout_exercises
+           INNER JOIN set_entries ON set_entries.workout_exercise_id = workout_exercises.id
+           WHERE workout_exercises.workout_session_id = workout_sessions.id
+         );`
+    );
+    for (const row of rows) collect(row.completed_at, decodeProgramPlan(row.program_plan_json));
+  }
+  return [...completed.values()];
 }
 
 export async function getProgressAverageWeightSeries(input: { liftKey?: string | null; limit?: number } = {}) {
@@ -511,13 +544,30 @@ async function createStoredWorkoutSession(input?: CreateSessionInput): Promise<A
     if (programPlan) throw new Error("Finish your active workout before starting a program.");
     return active;
   }
-  if (input && "followActiveProgram" in input) {
-    // Read the current program and local calendar date at creation time, not a stale screen snapshot.
-    const library = await getProgramLibrary();
-    const program = library.programs.find((item) => item.id === library.activeProgramId);
-    const day = program?.days[getScheduledDayIndex(program.schedule, program.days.length)];
-    if (program && day?.kind === "training") programPlan = toWorkoutProgramPlan(program, day.id);
-    // No program, future start dates, and rest days allow an unplanned workout.
+  if (input) {
+    // Read current eligibility at creation time; a delayed read across midnight must resolve the new day.
+    const explicitProgramPlan = programPlan;
+    for (;;) {
+      const date = localDateKey();
+      let alreadyCompleted = false;
+      if ("followActiveProgram" in input) {
+        const library = await getProgramLibrary();
+        const program = library.programs.find((item) => item.id === library.activeProgramId);
+        const day = program?.days[getScheduledDayIndex(program.schedule, program.days.length, date)];
+        programPlan = null;
+        if (program && day?.kind === "training") {
+          const completed = await getCompletedProgramDays(date);
+          if (!completed.some((item) => item.programId === program.id && item.dayId === day.id)) programPlan = toWorkoutProgramPlan(program, day.id);
+        }
+        // Rest, future starts and completed training days allow an unplanned extra workout.
+      } else if (explicitProgramPlan) {
+        const completed = await getCompletedProgramDays(date);
+        alreadyCompleted = completed.some((item) => item.programId === explicitProgramPlan.programId && item.dayId === explicitProgramPlan.dayId);
+      }
+      if (date !== localDateKey()) continue;
+      if (alreadyCompleted) throw new Error("You already completed this program day today. Start an extra workout without the program.");
+      break;
+    }
   }
   if (Platform.OS === "web") {
     return createWebWorkoutSession(programPlan);

@@ -190,6 +190,7 @@ Current progress:
 - Editable starter/imported/user programs with weekly or repeating-cycle training/rest schedules and typed targets.
 - Explicit activation/switch/deactivation, a prominent current-program/day summary, and automatic Session exercise queues.
 - Manual one-workout bypass and deactivation preserve unfinished sessions and previous history.
+- Today's saved program/day shows Completed today, removes repeat launch actions and offers an extra manual workout. Persisted completion checks protect stale starts; local date rollover restores the ordinary schedule without advancing cycles or resetting data.
 - Shared schedule revisions keep enabled reminders and rest-aware streaks aligned; lifecycle regressions cover both storage backends.
 
 Remaining:

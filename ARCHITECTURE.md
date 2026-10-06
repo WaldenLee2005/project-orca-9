@@ -97,6 +97,7 @@ Current Session flow:
 - `Add Exercise` appears after already logged exercises and opens the exercise picker.
 - Saving an exercise appends it to the active session log in chronological order.
 - Save Session marks the workout session completed after at least one exercise has been logged.
+- `getCompletedProgramDays` derives today's completed program/day pairs from nonempty completed workouts and their immutable plan snapshots, using the local calendar date of completion. Session shows **Completed today** instead of the finished day's exercise preview/start; **Start an extra workout** opens manual tracking while retaining the active program. Programs marks the same day completed and removes its launch action. Creation checks persistence again: explicit same-day repeats are blocked, automatic starts become unplanned, and unfinished-session resume takes priority. No schema/history reset or schedule advance is involved.
 - Exit session cancels only empty unfinished sessions; sessions with logged results pause and resume from Today. A shared workout mutation queue and conditional storage deletion protect results during concurrent saves. No schema or training-history reset is involved.
 - The start screen shows recent completed sessions below Start Session with exercise count, set count, and total volume.
 - Recent sessions expand to actual exercises/sets with optional private note editing. `SavedSetNotes` also provides review/edit/clear in the active log; collapsed sections retain unsaved note drafts.

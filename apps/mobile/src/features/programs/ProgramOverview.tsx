@@ -7,12 +7,13 @@ import { formatProgramPrescription, getDaySlotLabel, getProgramDayName, type Pro
 type ProgramDaysOverviewProps = {
   program: ProgramDraft | TrainingProgram;
   todayIndex?: number;
+  completedDayIds?: readonly string[];
   onStartDay?: (day: ProgramDay) => void;
   disabled?: boolean;
 };
 
 /** A read-only schedule; editing and activation belong to the program screen. */
-export function ProgramDaysOverview({ program, todayIndex, onStartDay, disabled = false }: ProgramDaysOverviewProps) {
+export function ProgramDaysOverview({ program, todayIndex, completedDayIds = [], onStartDay, disabled = false }: ProgramDaysOverviewProps) {
   const { styles, colors } = useThemeStyles(themedStyles);
   return <View style={styles.days}>
     {program.days.map((day, index) => {
@@ -23,6 +24,7 @@ export function ProgramDaysOverview({ program, todayIndex, onStartDay, disabled 
         <View style={styles.dayHeading}>
           <Text accessibilityRole="header" style={styles.dayTitle}>{title}</Text>
           {todayIndex === index ? <Text style={styles.today}>Today</Text> : null}
+          {completedDayIds.includes(day.id) ? <Text style={styles.today}>Completed today</Text> : null}
         </View>
         {day.kind === "rest" ? <View style={styles.rest}>
           <Ionicons name="moon-outline" size={17} color={colors.secondaryText} />
@@ -35,7 +37,7 @@ export function ProgramDaysOverview({ program, todayIndex, onStartDay, disabled 
               <Text style={styles.target}>{formatProgramPrescription(entry)}{entry.load ? ` · ${entry.load.weight} lb${entry.load.convention === "perHand" ? " / hand" : ""}` : ""}</Text>
             </View>
           </View>) : <Text style={styles.empty}>No exercises added yet.</Text>}
-          {onStartDay && day.exercises.length ? <Pressable accessibilityRole="button" accessibilityLabel={`Start ${title}`} accessibilityState={{ disabled }}
+          {onStartDay && day.exercises.length && !completedDayIds.includes(day.id) ? <Pressable accessibilityRole="button" accessibilityLabel={`Start ${title}`} accessibilityState={{ disabled }}
             disabled={disabled} onPress={() => onStartDay(day)} style={({ pressed }) => [styles.start, { opacity: disabled ? 0.45 : pressed ? 0.65 : 1 }]}>
             <Ionicons name="play-outline" size={17} color={colors.accent} /><Text style={styles.startText}>Start this day</Text>
           </Pressable> : null}
