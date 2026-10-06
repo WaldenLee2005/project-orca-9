@@ -783,7 +783,7 @@ export default function WorkoutsScreen() {
           <Text style={styles.programQueueTitle}>Planned target</Text>
           <Text style={styles.programQueueHint}>{(() => { const entry = programPlan?.exercises.find((item) => item.id === selectedProgramEntryId); return entry ? formatProgramPrescription(entry) : ""; })()}</Text>
         </View> : null}
-        <CoachedSetLogger key={`${selectedExercise.id}:${selectedProgramEntryId ?? "manual"}`} exerciseId={selectedExercise.id}
+        <CoachedSetLogger key={`${selectedExercise.id}:${selectedProgramEntryId ?? "manual"}`} exerciseId={selectedExercise.id} exerciseName={selectedExercise.name}
           coachingEnabled={loadCoachingEnabled}
           entry={programPlan?.exercises.find((item) => item.id === selectedProgramEntryId)} readiness={readiness} onReadiness={setReadiness}
           saving={isSavingExercise} onSave={saveExerciseToSession} />

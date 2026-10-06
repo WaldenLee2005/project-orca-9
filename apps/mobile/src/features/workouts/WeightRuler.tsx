@@ -22,7 +22,8 @@ export function WeightRuler({ label, value, onChange, disabled = false }: Props)
   const [focused, setFocused] = useState(false);
   const current = useRef({ value, onChange, disabled });
   current.current = { value, onChange, disabled };
-  const gesture = useRef({ active: false, start: 0, distance: 0, tick: 0 });
+  const gesture = useRef({ active: false, start: 0, offset: 0, distance: 0, tick: 0 });
+  const claimedDistance = useRef(0);
   const lastSent = useRef(value);
   const lastHapticAt = useRef(0);
 
@@ -45,6 +46,9 @@ export function WeightRuler({ label, value, onChange, disabled = false }: Props)
     if (current.current.disabled) return;
     if (!Object.is(next, current.current.value)) {
       lastSent.current = next;
+      // Retain the selection until the controlled parent has rendered it.
+      // Native termination can happen before that render or release event.
+      current.current.value = next;
       current.current.onChange(next);
     }
   }
@@ -67,32 +71,53 @@ export function WeightRuler({ label, value, onChange, disabled = false }: Props)
     sendValue(selected);
   }
 
+  function claimGesture(distanceX: number, distanceY: number, touches: number) {
+    if (current.current.disabled || !isHorizontalWeightGesture(distanceX, distanceY, touches)) return false;
+    if (!gesture.current.active) claimedDistance.current = distanceX;
+    return true;
+  }
+
+  function moveGesture(distance: number) {
+    gesture.current.distance = distance;
+    const next = weightFromDrag(gesture.current.start, distance);
+    const tick = snapWeight(next);
+    position.setValue(next);
+    if (tick !== gesture.current.tick) {
+      gesture.current.tick = tick;
+      tickFeedback();
+    }
+    // Persist each chosen tick rather than depending on a release that a
+    // native ScrollView or operating-system interruption can consume.
+    sendValue(tick);
+  }
+
   const responder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_, state) => !current.current.disabled &&
-      isHorizontalWeightGesture(state.dx, state.dy, state.numberActiveTouches),
+    onStartShouldSetPanResponderCapture: () => { claimedDistance.current = 0; return false; },
+    onMoveShouldSetPanResponderCapture: (_, state) => claimGesture(state.dx, state.dy, state.numberActiveTouches),
+    onMoveShouldSetPanResponder: (_, state) => claimGesture(state.dx, state.dy, state.numberActiveTouches),
     onPanResponderGrant: (_, state) => {
+      if (current.current.disabled || state.numberActiveTouches !== 1) return;
       position.stopAnimation();
       const start = boundedWeight(current.current.value);
-      gesture.current = { active: true, start, distance: state.dx, tick: snapWeight(start) };
+      // PanResponder resets dx to zero when granting ownership. Keep the
+      // move that crossed the threshold so short swipes still choose a tick.
+      const offset = claimedDistance.current;
+      gesture.current = { active: true, start, offset, distance: offset, tick: snapWeight(start) };
       setDragging(true);
-      position.setValue(weightFromDrag(start, state.dx));
+      moveGesture(offset + state.dx);
+    },
+    onPanResponderStart: (_, state) => {
+      if (state.numberActiveTouches !== 1) finishGesture(false);
     },
     onPanResponderMove: (_, state) => {
       if (!gesture.current.active || current.current.disabled) return;
       if (state.numberActiveTouches !== 1) { finishGesture(false); return; }
-      gesture.current.distance = state.dx;
-      const next = weightFromDrag(gesture.current.start, state.dx);
-      const tick = snapWeight(next);
-      position.setValue(next);
-      if (tick !== gesture.current.tick) {
-        gesture.current.tick = tick;
-        tickFeedback();
-      }
+      moveGesture(gesture.current.offset + state.dx);
     },
     onPanResponderRelease: () => finishGesture(true),
-    onPanResponderTerminationRequest: () => true,
-    onPanResponderTerminate: () => finishGesture(false),
+    onPanResponderTerminationRequest: (_, state) => !gesture.current.active || current.current.disabled || state.numberActiveTouches !== 1,
+    onPanResponderTerminate: () => finishGesture(true),
     onShouldBlockNativeResponder: () => true
   })).current;
 
@@ -132,10 +157,11 @@ export function WeightRuler({ label, value, onChange, disabled = false }: Props)
     setEditing(false);
   }
 
-  function step(direction: 1 | -1) {
+  function step(direction: 1 | -1, amount: 0.5 | 5 | 10 = 0.5) {
     if (current.current.disabled) return;
     finishGesture(false);
-    const next = stepWeight(current.current.value, direction);
+    const next = amount === 0.5 ? stepWeight(current.current.value, direction)
+      : boundedWeight(Number((boundedWeight(current.current.value) + direction * amount).toFixed(2)));
     animateTo(next);
     if (!Object.is(next, current.current.value)) tickFeedback();
     sendValue(next);
@@ -185,6 +211,14 @@ export function WeightRuler({ label, value, onChange, disabled = false }: Props)
         </View>
       </View>
     </View>
+    <View style={s.quickSteps}>
+      {([-10, -5, 5, 10] as const).map((amount) => <Pressable key={amount} accessibilityRole="button"
+        accessibilityLabel={`${amount > 0 ? "Increase" : "Decrease"} ${label} by ${Math.abs(amount)} pounds`}
+        accessibilityState={{ disabled }} disabled={disabled}
+        onPress={() => step(amount > 0 ? 1 : -1, Math.abs(amount) as 5 | 10)} style={[s.quickStep, disabled && s.disabled]}>
+        <Text style={s.typeAction}>{amount > 0 ? "+" : "−"}{Math.abs(amount)}</Text>
+      </Pressable>)}
+    </View>
     <Modal visible={editing} transparent animationType="fade" onRequestClose={() => setEditing(false)}>
       <KeyboardAvoidingView style={s.backdrop} behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}>
         <View style={s.dialog} accessibilityViewIsModal>
@@ -225,5 +259,7 @@ const themedStyles = createThemedStyles((colors, ui) => ({
   input: { ...ui.input, minHeight: 48, padding: 12, color: colors.text, fontSize: 20 },
   dialogActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
   dialogButton: { minHeight: 44, minWidth: 64, paddingHorizontal: 12, justifyContent: "center", alignItems: "center" },
-  error: { color: colors.danger, fontSize: 13, lineHeight: 20 }
+  error: { color: colors.danger, fontSize: 13, lineHeight: 20 },
+  quickSteps: { flexDirection: "row", gap: 6 },
+  quickStep: { ...ui.control, flex: 1, minHeight: 44, justifyContent: "center", alignItems: "center" }
 }));

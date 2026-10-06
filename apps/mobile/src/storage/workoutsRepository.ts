@@ -19,7 +19,7 @@ export function normalizeWorkoutSetNote(note: unknown): string | null {
   if (normalized.length > MAX_SET_NOTE_LENGTH) throw new Error(`Keep each set note to ${MAX_SET_NOTE_LENGTH} characters or fewer.`);
   return normalized || null;
 }
-export type ExerciseExposure = { sessionId: string; performedAt: string; exerciseId: string; actualSets: WorkoutSet[]; prescription?: ProgramExercise };
+export type ExerciseExposure = { sessionId: string; performedAt: string; exerciseId: string; exerciseName?: string; actualSets: WorkoutSet[]; prescription?: ProgramExercise };
 export type StoredSessionExercise = {
   id: string;
   exercise: SessionExercise;
@@ -1174,13 +1174,13 @@ export async function getCoachHistory(): Promise<ExerciseExposure[]> {
     const sessions = (await getWebWorkoutSessions()).filter((session) => session.completedAt).sort((a, b) => b.completedAt!.localeCompare(a.completedAt!)).slice(0, 120);
     for (const session of sessions) {
       for (const exercise of session.exercises) result.push({ sessionId: session.id, performedAt: exercise.savedAt,
-        exerciseId: exercise.exercise.id, actualSets: getCoachSets(exercise), prescription: exercise.prescription });
+        exerciseId: exercise.exercise.id, exerciseName: exercise.exercise.name, actualSets: getCoachSets(exercise), prescription: exercise.prescription });
     }
   } else {
     const database = await getDatabase();
     const sessions = await database.getAllAsync<{ id: string }>("SELECT id FROM workout_sessions WHERE completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 120;");
     for (const session of sessions) for (const exercise of await getWorkoutExercises(session.id)) result.push({
-      sessionId: session.id, performedAt: exercise.savedAt, exerciseId: exercise.exercise.id, actualSets: getCoachSets(exercise), prescription: exercise.prescription
+      sessionId: session.id, performedAt: exercise.savedAt, exerciseId: exercise.exercise.id, exerciseName: exercise.exercise.name, actualSets: getCoachSets(exercise), prescription: exercise.prescription
     });
   }
   return result;

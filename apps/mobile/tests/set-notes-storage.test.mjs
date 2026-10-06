@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
+import { getRecentExerciseWeight } from "../src/features/workouts/weightHistory.ts";
 
 // Run the real workout repository against isolated web storage and SQLite, never device data.
 const state = { platform: { OS: "web" }, values: new Map(), sql: null, nextId: 0, failWrite: false };
@@ -70,6 +71,28 @@ test("set notes accept omission, blank, multiline and Unicode text with bounded 
 });
 
 for (const platform of ["web", "ios"]) {
+  test(`${platform}: completed performance history retains custom names across selection IDs and omits private notes`, async (t) => {
+    setup(t, platform);
+    const session = await workouts.createWorkoutSession();
+    await add(session.id, [{ weight: 100, reps: 8, note: "Private catalog note" }]);
+    await add(session.id, [{ weight: 135, reps: 8, note: "Private custom note" }], {
+      exercise: { ...exercise, id: "custom-first-selection", name: "  My Bench Press  " }
+    });
+    assert.deepEqual(await workouts.getCoachHistory(), [], "unfinished sessions never become weight baselines");
+    await workouts.completeWorkoutSession(session.id);
+    const history = await workouts.getCoachHistory();
+    assert.equal(history.length, 2);
+    assert.equal(history.find((entry) => entry.exerciseId === "bench").exerciseName, "Bench Press");
+    const custom = history.find((entry) => entry.exerciseId.startsWith("custom-"));
+    assert.equal(custom.exerciseName, "  My Bench Press  ");
+    const storedCustom = (await workouts.getWorkoutSessionExercises(session.id)).find((entry) => entry.exercise.id.startsWith("custom-"));
+    assert.equal(custom.exerciseId, storedCustom.exercise.id, "existing platform ID projection stays preserved");
+    assert.equal(history.some((entry) => entry.actualSets.some((set) => "note" in set)), false);
+    assert.equal(getRecentExerciseWeight(history, "custom-second-selection", {
+      now: Date.now(), exerciseName: "my bench press"
+    }).weight, 135, "a new custom selection reuses only that custom lift's measured weight");
+  });
+
   test(`${platform}: optional per-set notes survive save, reload, completed review, edit and clear without altering work`, async (t) => {
     setup(t, platform);
     const session = await workouts.createWorkoutSession();

@@ -1,5 +1,13 @@
 # Decision Log
 
+## 2026-10-05: Retain Touch Selections And Start Weight Entry Near Recent Actual Work
+
+Decision: Capture horizontal ruler gestures before scrolling, retain the initial displacement that React Native resets on grant, and preserve selected ticks through interruption. Add ±5/±10 lb controls while keeping 0.5 lb snapping.
+
+Prefill only untouched blank weights using the rep-weighted working-set average from the last three eligible completed workouts for the exercise within 90 local days. Exclude warm-ups, timed/invalid/future results and incompatible known load settings. Prescribed/manual values and explicit clearing take precedence; asynchronous reads never replace them. The average is shown and editable with coaching off or on. Custom exercise names identify repeat lifts because their per-entry IDs vary; catalog IDs remain exact. Without history, enter a first weight and optionally copy it to empty sets. No invented starting load, history changes or schema upgrade.
+
+Reason: Reported touch swipes returned to 0/Select weight, and starting every lift at zero made heavy-weight entry cumbersome. Recent actual work gives a useful starting point while preserving exact historical data and manual control.
+
 ## 2026-10-05: Simplify Session Coaching And Make Weight Entry Tactile
 
 Decision: Replace exercise-specific load-coaching setup with a saved program on/off default and a persisted session override. Preserve existing load/equipment metadata and training records. Off hides the session's coaching controls; on still requires review before applying changes. Without explicit load context, the prototype may suggest fewer sets while retaining individual manual weights; it never guesses loads or equipment steps.
