@@ -11,7 +11,7 @@ Recommended baseline:
 - TypeScript
 - Expo Router for navigation
 - Local-first storage for the MVP
-- Supabase auth/profile foundation implemented; friends/feed and optional account-owned reconnect sync planned for v1
+- Supabase auth/profile and following/text/photo/automatic-PR feed implemented; hosted acceptance and optional account-owned workout reconnect sync remain for v1
 
 ## Visual System
 
@@ -39,6 +39,7 @@ apps/mobile/
       exercises.tsx
       programs.tsx
       progress.tsx
+      feed.tsx
       profile.tsx
   assets/
     repdb/
@@ -168,15 +169,19 @@ Possible future integrations:
 
 ### Social
 
-Owns friends, sharing controls, and the activity feed. This requires a managed backend because friend data and feed events must be shared across devices and accounts.
+Owns following, sharing controls, and the activity feed. This requires a managed backend because social data and posts must be shared across devices and accounts.
 
-Planned backend shape:
+Current backend shape (hosted deployment/acceptance pending):
 
 - Supabase Auth for user accounts.
-- Supabase Postgres for public profiles, friendships, and compact feed events.
-- Row Level Security so users can only see allowed friend data.
+- Supabase Postgres for social profiles, follows and compact feed events; existing friendship rows remain intact.
+- Account-bound RPCs enforce follow approval and post validation. RLS checks current profile visibility, post audience and accepted followers. Stored `friends` means Followers; `private` posts mean Only me.
 - Local SQLite remains the phone source of truth for full workout details.
 - Only opt-in workout summaries and PR/feed events should be published by default.
+
+`FeedScreen` adds Following/Your posts, handle discovery, request approval/removal and explicit text/photo posting. `feedClient.ts` is an injectable authenticated transport with timeouts, account checks before/after requests, idempotent client event IDs and signed image reads. Private feed images are separate from existing public avatars; 60-second signed links bound residual access after revocation. Deletion tombstones prevent post resurrection and retain a photo cleanup path for retries. The additive, rerunnable `supabase/feed-following.sql` preserves existing cloud rows and local training.
+
+`prPublishingModel.ts` derives one strict actual-weight PR per completed session/lift from full history. `getSocialPersonalRecordHistory` reads only identifiers, times, lift names and actual weight/reps, including warm-ups and excluding timed work. `prPublishingService.ts` stores per-account consent windows, pending events and settled IDs in separate AsyncStorage keys. Both session start and completion must occur inside the same enabled/authenticated window; opt-in never backfills guest or older work. Disabling cancels pending intentions and re-enabling starts fresh. The root `SocialFeedCoordinator` retries on auth, training changes and resume; local state writes serialize while network sends run independently, so preferences and workout saves remain usable during failures. Notes/raw logs are never posted.
 
 Current auth/profile shape:
 
@@ -275,10 +280,19 @@ Friendship
   status
   createdAt
 
+Follow
+  followerUserId
+  followedUserId
+  status (pending or accepted)
+  createdAt
+
 FeedEvent
   id
   userId
+  clientEventId? (retry identity, unique per owner)
   eventType
+  visibility
+  imagePath? (private feed-images object)
   workoutSessionId?
   exerciseNameSnapshot?
   summaryText
@@ -310,7 +324,7 @@ Likely options:
 
 Planned for the January 4, 2027 release:
 
-- Finish hosted/account readiness, friends/feed publishing and optional account-owned reconnect sync. Define ownership, queue/retry/conflict rules and the new metadata contracts before implementation; these capabilities are not yet verified or shipped.
+- Finish hosted/account readiness and following/feed acceptance, plus optional account-owned workout reconnect sync. The feed's compact account-owned PR queue is implemented; full training-data sync and its conflict rules remain separate work.
 - Preserve guest offline logging and local persistence. Sharing compact feed events requires explicit opt-in; private notes and raw logs are not social content.
 
 Later:
@@ -329,7 +343,7 @@ Social feed storage should stay compact:
 - Keep detailed workout history in local SQLite unless the user opts into backup/sync.
 - Add privacy settings before publishing any friend-visible workout data.
 
-Supabase setup currently lives in `supabase/social-schema.sql` and `supabase/avatar-storage.sql`; both must be run in the project SQL editor before cloud social profile writes and avatar uploads will work.
+Supabase setup lives in `supabase/social-schema.sql`, `supabase/avatar-storage.sql` and the additive `supabase/feed-following.sql`, applied in that order. The last script enables following, validated feed RPCs, deletion tombstones and private feed images. Local SQL/client checks do not establish deployment to the hosted project; see the social README for verification.
 
 ## UI Direction
 

@@ -30,7 +30,7 @@ import { ProfileVisibility } from "../../src/types/fitness";
 
 const VISIBILITY_OPTIONS: { label: string; value: ProfileVisibility }[] = [
   { label: "Private", value: "private" },
-  { label: "Friends", value: "friends" },
+  { label: "Followers", value: "friends" },
   { label: "Public", value: "public" }
 ];
 

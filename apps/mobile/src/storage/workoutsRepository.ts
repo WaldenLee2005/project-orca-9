@@ -84,6 +84,9 @@ export type ProgressPersonalRecordPoint = {
   exerciseName: string;
 };
 
+/** Compact completed performance for social PR derivation; never contains private notes. */
+export type SocialPersonalRecordPoint = ProgressPersonalRecordPoint & { startedAt: string; liftKey: string };
+
 export type ProgressLiftOption = {
   key: string;
   name: string;
@@ -478,6 +481,49 @@ export async function getProgressPersonalRecordSeries(input: { liftKey?: string 
     }
   }
   return [...points.values()];
+}
+
+/** Full history, one actual heaviest rep set per session/lift, including warm-ups. */
+export async function getSocialPersonalRecordHistory(): Promise<SocialPersonalRecordPoint[]> {
+  const best = new Map<string, SocialPersonalRecordPoint>();
+  const collect = (point: SocialPersonalRecordPoint) => {
+    if (!Number.isFinite(point.weight) || point.weight < 0 || point.weight > 10000
+      || !Number.isInteger(point.reps) || point.reps <= 0 || point.reps > 100) return;
+    const key = JSON.stringify([point.id, point.liftKey]);
+    if (!best.has(key) || point.weight > best.get(key)!.weight) best.set(key, point);
+  };
+  if (Platform.OS === "web") {
+    for (const session of await getWebWorkoutSessions(true)) {
+      if (!session.completedAt) continue;
+      for (const exercise of session.exercises) {
+        for (const set of getActualSets(exercise)) {
+          if (set.durationSeconds != null) continue;
+          collect({ id: session.id, startedAt: session.startedAt, completedAt: session.completedAt,
+            liftKey: getExerciseProgressKey(exercise.exercise.id, exercise.exercise.name),
+            exerciseName: exercise.exercise.name, weight: set.weight, reps: set.reps });
+        }
+      }
+    }
+  } else {
+    const database = await getDatabase();
+    const rows = await database.getAllAsync<ProgressPersonalRecordSetRow & { started_at: string }>(
+      `SELECT workout_sessions.id, workout_sessions.started_at, workout_sessions.completed_at,
+        workout_exercises.exercise_id, workout_exercises.exercise_name_snapshot AS exercise_name,
+        set_entries.weight, set_entries.reps
+       FROM workout_sessions
+       INNER JOIN workout_exercises ON workout_exercises.workout_session_id = workout_sessions.id
+       INNER JOIN set_entries ON set_entries.workout_exercise_id = workout_exercises.id
+       WHERE workout_sessions.completed_at IS NOT NULL
+         AND set_entries.duration_seconds IS NULL AND set_entries.reps > 0
+       ORDER BY workout_sessions.completed_at ASC, workout_sessions.id ASC,
+         workout_exercises.exercise_order ASC, set_entries.set_number ASC, workout_exercises.id ASC;`
+    );
+    for (const row of rows) collect({ id: row.id, startedAt: row.started_at, completedAt: row.completed_at,
+      liftKey: getExerciseProgressKey(row.exercise_id ?? "custom-", row.exercise_name),
+      exerciseName: row.exercise_name, weight: row.weight, reps: row.reps });
+  }
+  return [...best.values()].sort((first, second) => first.completedAt.localeCompare(second.completedAt)
+    || first.id.localeCompare(second.id) || first.liftKey.localeCompare(second.liftKey));
 }
 
 export async function getProgressLiftOptions() {

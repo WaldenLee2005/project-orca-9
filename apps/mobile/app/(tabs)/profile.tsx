@@ -167,7 +167,7 @@ export default function ProfileScreen() {
         <InfoRow label="Coach suggestions" value="Review before applying" />
         <InfoRow label="Cloud sync" value="Not enabled" />
       </View>
-      <Text style={styles.footnote}>Signing in manages your profile. Your workout history and programs remain on this device.</Text>
+      <Text style={styles.footnote}>Your workout history and programs stay on this device. Manage following, posts and optional PR sharing in Feed.</Text>
       <ReminderSettings />
 
       {statusText ? <Text style={[styles.statusText, { color: theme.colors.secondaryText }]}>{statusText}</Text> : null}
@@ -345,6 +345,7 @@ function persistProfileInBackground(profile: UserProfile) {
 }
 
 function formatProfileValue(value: string) {
+  if (value === "friends") return "Followers";
   return value
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))

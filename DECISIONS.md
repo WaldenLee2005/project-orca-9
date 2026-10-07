@@ -1,5 +1,13 @@
 # Decision Log
 
+## 2026-10-06: Following Feed With Explicit Posts And Opt-In Automatic PRs
+
+Decision: Add a Following/Your posts feed, text updates up to 2,000 characters and one optional JPEG/PNG/WebP image up to 5 MB. Follow public profiles immediately; private and follower-only profiles approve requests. Private profiles are discoverable by exact handle. Keep the stored `friends` audience value for compatibility and label it Followers. Only-me posts remain owner-only; public discovery requires both a public post and a currently public profile. Removing a follower revokes new reads. Existing avatars retain their public bucket; feed images use a separate private bucket with 60-second signed links.
+
+Automatic PR sharing is off by default and starts with future workouts wholly inside the same signed-in account's enabled window. Derive strict heaviest-actual-weight improvements per lift from full completed history, including warm-ups and excluding timed sets. Publish only the lift name, actual weight/reps and previous record, never notes or raw logs. Account-scoped durable retries, stable event IDs and server deletion tombstones prevent duplicates and deleted-post resurrection. Turning sharing off cancels pending work; local workout saves never await cloud publication.
+
+Reason: The user requested PR auto-posting, simple text/image posts and following. This replaces the planned friendship feed interaction with following while preserving existing profiles, friendships, feed rows and local training. The additive `supabase/feed-following.sql` migration and hosted/native acceptance are separate from compiling the app; see the social README.
+
 ## 2026-10-06: Restart An Active Program After A Missed Training Day
 
 Decision: If a settled scheduled Training date since the active program's latest revision/start has no nonempty completed workout with that exact program/day snapshot on the local completion date, restart execution at the program's first stored day today. Today remains open, scheduled rest is not a miss, and manual rest or another workout does not satisfy the program day. This rule concerns program adherence rather than the ordinary workout/rest streak.

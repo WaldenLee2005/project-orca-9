@@ -8,7 +8,7 @@ The first version focuses on fast, tap-driven session logging: start a session, 
 
 Long term, the app should help users manage lifting programs, understand strength progress, maintain realistic streaks that respect rest days, and optionally connect with health and nutrition data sources.
 
-The first release should include a lightweight social layer where users can connect with friends and see opt-in updates such as new PRs and completed sessions. This requires accounts and a shared backend, while keeping the local-first workout logging flow usable offline.
+The first release includes a lightweight social layer for following other lifters, posting text/photos and optionally auto-sharing new PRs. The app implementation is present; hosted configuration and native acceptance remain. Completed-session sharing is still planned. Social features require accounts and a shared backend, while the local-first workout logging flow stays usable offline.
 
 ## Target User
 

@@ -9,14 +9,14 @@ Requested October 4, 2026 and confirmed for the January 4, 2027 launch. These ar
 | Vacation mode | Generate a temporary routine from the equipment available while traveling. Review and edit before using it, then return to the regular program. | Match available equipment, keep targets editable, preserve the original program and history, and restore the normal schedule without rewriting past rest days. |
 | Notes to self | Optional private notes on each recorded set implemented; add/edit/clear them in the logger, active log and recent-session details. Session-level notes remain planned. | Retain notes offline after reload on native/web, preserve existing training data, keep notes out of coaching inputs and social sharing, and verify native phone flows before release. |
 | Recaps | Show a completion recap and weekly training summary from actual saved work. | Correct exercise/set/volume/time totals, PRs and consistency; respect timed work, rest days and history corrections without inventing results. |
-| Feed | Share opted-in workout and PR summaries with friends. | Private-by-default publishing, friendship/privacy checks, deletion/unsharing, and no automatic exposure of full workout logs or private notes. |
+| Feed | Following/Your posts, text and one optional photo, approved private follows, and opt-in automatic PR posts implemented. | Hosted migration/security checks and native photo/account flows remain; preserve owner-only audiences, deletion/retry safety and private notes. Session-summary sharing remains planned. |
 | Music listened to | Manually record song/playlist names or links associated with a workout. | Retain metadata in workout history with offline save/reload and editing/deletion. Automatic capture requires a later provider choice and consent/permissions. |
 | Supplements | Keep a private log of supplements the user records. | User-entered product, amount/unit and time with edit/delete, offline persistence and recap inclusion only when chosen. |
 | Offline mode with reconnect sync | Continue logging offline and sync account-owned data after connectivity returns. | Durable pending changes, idempotent retries, account isolation, visible sync/conflict state, and edits/deletions surviving reconnect without duplication or data loss. Guest logging stays local. |
 | Workout time | Show elapsed workout time and save duration with completed sessions. | Explicit pause/resume rules, correct background/restart handling, and duration in history/recaps. Elapsed workout time stays separate from timed exercise sets. |
 | Rest timer | Run an adjustable countdown between sets. | Start/pause/skip/reset, correct background/resume behavior, and completion alerts that respect permissions and do not interfere with workout reminders. |
 
-Existing foundations: local offline workout storage, session start/completion timestamps, a database-level session notes field, a seven-day coach summary and Supabase auth/profile code. The per-set notes editor is implemented; the session-level notes editor, weekly recap product, workout/rest timers, music/supplement tracking, vacation generator, feed and training-data sync remain planned.
+Existing foundations: local offline workout storage, session start/completion timestamps, a database-level session notes field, a seven-day coach summary and Supabase auth/profile code. Per-set notes and the following/text/photo/automatic-PR feed are implemented. The session-level notes editor, weekly recap product, workout/rest timers, music/supplement tracking, vacation generator and training-data sync remain planned. Feed hosted/native acceptance is still required.
 
 ## MVP Features
 
@@ -216,9 +216,9 @@ Current capabilities:
 
 ### Social Feed
 
-Status: Auth/profile foundation started; friends/feed publishing planned for v1, November 16–29. Hosted account readiness is targeted October 12–25.
+Status: Following, text/photo posts and opt-in automatic PR publishing implemented October 6. Hosted schema deployment/security and physical-device acceptance remain before beta.
 
-Purpose: Let users connect with friends and see opt-in lifting updates.
+Purpose: Let users follow other lifters and share small updates.
 
 Expected capabilities:
 
@@ -228,15 +228,16 @@ Expected capabilities:
 - Upload a profile picture.
 - Keep privacy private by default.
 - Change privacy during onboarding/settings.
-- Send, accept, and remove friend requests.
-- View a friends feed.
-- Share new PR events.
+- Follow public profiles immediately; request/approve private and follower-only accounts, cancel requests, unfollow and remove followers.
+- View Following and Your posts with paging, refresh, retry and empty states.
+- Post up to 2,000 characters and one optional photo; select Followers, Public or Only me, and delete posts.
+- Enable automatic future-workout PR posts with an account-owned audience and retry queue; full actual history determines new records.
 - Share compact completed-session summaries.
 - Control privacy before workout data becomes friend-visible.
 
 Storage approach:
 
-- Use Supabase for accounts, friendships, and feed events.
+- Use Supabase for accounts, follows and feed events; preserve legacy friendship rows.
 - Keep full workout history local-first in SQLite unless backup/sync is enabled.
 - Publish small derived events instead of raw workout logs by default.
 
@@ -254,6 +255,9 @@ Current capabilities:
 - Missing social profile rows can be repaired from auth metadata or one-time handle setup in Settings.
 - SQL schema file exists for Supabase social tables and RLS policies.
 - Supabase Storage setup exists for uploaded avatar images.
+- Feed images use a separate private 5 MB bucket; signed links expire after 60 seconds and new reads follow the post/profile/follower permissions.
+- Account switching clears displayed social data; turning automatic sharing off cancels pending posts. Event IDs and deletion tombstones prevent retry duplicates/resurrection. Guest logging and private notes remain local.
+- The additive `supabase/feed-following.sql` migration preserves existing data. See the social README for setup, policy checks and remaining hosted/device acceptance.
 
 ### Apple Health Integration
 

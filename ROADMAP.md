@@ -35,7 +35,7 @@ The user added these nine features on October 4 and confirmed all nine for launc
 | Vacation mode | F01 | Nov 16 | Nov 29 | Reviewed travel routine generated from available equipment; preserve/restore the regular plan. |
 | Notes to self | F02 | Oct 19 | Nov 1 | Optional private per-set notes implemented with offline persistence and recent-session review/edit/clear. Session-level notes and release device checks remain. |
 | Recaps | F03 | Nov 2 | Nov 15 | Completion and weekly summaries using actual sessions, working sets, volume, time, PRs and consistency. |
-| Feed | L02 | Nov 16 | Nov 29 | Opt-in friend-visible workout/PR summaries, tested audience permissions and unsharing/deletion. |
+| Feed | L02 | Oct 6 implementation | Nov 29 acceptance target | Following, text/photo posts and opt-in automatic PRs implemented early. Hosted policies/storage and native acceptance remain; session-summary sharing is planned. |
 | Music listened to | F04 | Nov 2 | Nov 8 | Manually record song/playlist names or links in workout history. |
 | Supplements | F05 | Nov 9 | Nov 15 | Private user-entered name, optional amount/unit/time and notes with editing and deletion. |
 | Offline mode with reconnect sync | F06 | Nov 9 | Nov 29 | Durable account-owned queue, reconnect/retry deduplication, conflicts and offline edits/deletions. |
@@ -281,7 +281,7 @@ Deliverables:
 - Feed tab or feed section.
 - Local-to-cloud publish flow for selected PR/session summary events.
 
-Status: In progress; auth/profile foundation started.
+Status: Following, feed text/photos and automatic PR publishing implemented October 6; hosted/native acceptance pending.
 
 Current progress:
 
@@ -292,16 +292,19 @@ Current progress:
 - Profile visibility defaults to private.
 - Supabase SQL schema exists for social profiles, friendships, and feed events.
 - Avatar image upload and signed-in profile/privacy editing are implemented.
+- Following/Your posts feed supports paging, text/photo posting and owner deletion. Public accounts allow immediate follows; private/follower-only accounts approve requests. Legacy `friends` audience is labeled Followers.
+- Explicitly enabled automatic PR sharing derives actual per-lift improvements from full completed history. Account-scoped durable retries and deletion tombstones prevent duplicates, without blocking workout saves or sharing notes.
+- Private feed images and audience RLS/RPCs live in additive, rerunnable `supabase/feed-following.sql`; current profiles, friendships, feed rows and local training are preserved.
 
 Remaining:
 
 - Confirm the hosted schema, policies and avatar bucket configuration; local SQL files do not establish deployment.
 - Device-verify optional account confirmation/recovery and deletion/profile/avatar cleanup, explicitly handling device-local training data; preserve independent guest logging for v1.
-- Friend request UI and repository functions.
-- Feed UI.
-- PR/session-summary publishing from local SQLite.
+- Apply/verify the hosted following/feed migration and private image bucket with separate-account audience/revocation checks.
+- Physical-device account switching, image picker/upload/retry, offline PR retry and deletion acceptance.
+- Compact completed-session sharing remains planned; the requested PR/text/photo/following scope is implemented.
 
-Friends/feed publishing is now in v1 as L02, targeted November 16–29. Account readiness moves to October 12–25; feed audience policies and retry-safe publishing are required before its beta build.
+Feed remains L02 in v1. Requested PR/text/photo/following implementation moved forward to October 6; retain November 29 as the acceptance target. Account readiness is targeted October 12–25, and hosted audience/storage verification is required before a feed beta build.
 
 ## Phase 10: Nutrition Integrations
 

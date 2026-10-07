@@ -28,6 +28,7 @@ Expo Router foundation for the lifting tracker MVP.
    - Exercises
    - Programs
    - Progress
+   - Feed
    - Profile
 
 5. Open Exercises, search `DB bench`, apply the Chest filter, and open Dumbbell Bench Press. Confirm its image/instructions and use `Use in Session` to open the logger.
@@ -119,7 +120,13 @@ SQLite schema 9 adds only a nullable set-note column to current schema-6/7/8 tra
 
 ## Visual checks
 
-The app uses the Native design: system typography, blue actions, flat grouped surfaces, and device-following light/dark appearances. The bottom navigation is edge-to-edge and does not overlap scrolling content. Check all five tabs at phone size in both appearances, including exercise search focus/empty states, individual-set controls, program editor/reordering, import review, the rest-day button, charts, and optional sign-in. Programs contains user-saved plans and opt-in starter templates. This visual update makes no schema or storage changes.
+The app uses the Native design: system typography, blue actions, flat grouped surfaces, and device-following light/dark appearances. The bottom navigation is edge-to-edge and does not overlap scrolling content. Check all six tabs at phone size in both appearances, including exercise search focus/empty states, individual-set controls, program editor/reordering, import review, the rest-day button, charts, Feed and optional sign-in. Programs contains user-saved plans and opt-in starter templates. This visual update makes no schema or storage changes.
+
+## Try the social feed
+
+Apply the additive hosted setup in [Social](src/features/social/README.md) before cloud testing. In **Feed**, sign in, share text or one photo and select Followers, Public or Only me. **Your posts** includes your private posts; Following includes your own updates and accepted follows. Open **People** to search handles, follow, cancel requests, approve/decline private-account requests, unfollow or remove followers.
+
+**Automatically share PRs** defaults off. Enable it for future workouts and choose an audience; sessions already started and older/guest history are excluded. New per-lift actual weight records post after completion, with durable account-scoped retries and visible retry status. Notes stay private. Turning sharing off cancels pending posts. Delete a post and verify retries never recreate it; if photo cleanup fails, use its retry action. Check guest/account switching, offline retry, narrow phones, both appearances and the installed image picker. Hosted audience/storage checks and physical-device acceptance remain required; app bundles alone do not verify them.
 
 ## Starter programs
 

@@ -11,6 +11,7 @@ const tabIcons: Record<string, TabIconName> = {
   exercises: "search-outline",
   programs: "calendar-outline",
   progress: "trending-up-outline",
+  feed: "people-outline",
   profile: "person-outline"
 };
 
@@ -59,6 +60,7 @@ export default function TabLayout() {
       <Tabs.Screen name="exercises" options={{ title: "Exercises" }} />
       <Tabs.Screen name="programs" options={{ title: "Programs" }} />
       <Tabs.Screen name="progress" options={{ title: "Progress" }} />
+      <Tabs.Screen name="feed" options={{ title: "Feed" }} />
       <Tabs.Screen name="profile" options={{ title: "Profile" }} />
     </Tabs>
   );

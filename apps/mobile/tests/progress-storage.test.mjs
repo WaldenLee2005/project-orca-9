@@ -244,6 +244,29 @@ for (const platform of ["web", "ios"]) {
     assert.equal(Math.max(...points.map((point) => point.weight)), 405.25);
     assert.ok(points.every((point, index) => index === 0 || point.completedAt >= points[index - 1].completedAt));
     assert.equal(historySnapshot(), snapshot);
+    const socialHistory = await workouts.getSocialPersonalRecordHistory();
+    assert.equal(socialHistory.length, 166, "social record comparisons also keep the complete older history");
+    assert.equal(socialHistory[0].weight, 405.25);
+  });
+
+  test(`${platform}: social PR history keeps actual best sets per lift and never exposes private notes`, async (t) => {
+    initializeStorage(platform, t);
+    const completedAt = "2026-09-01T12:00:00.000Z";
+    seedSessions([
+      recordedSession("complete", completedAt, [
+        recordedExercise("bench-press", "Barbell Bench Press", [{ reps: 10, weight: 135, note: "Private working note" }, { reps: 2, weight: 175.25, warmup: true, note: "Private warm-up" }]),
+        recordedExercise("bench-press", "Barbell Bench Press", [{ reps: 1, weight: 175.25 }]),
+        recordedExercise("custom-row", "My row", [{ reps: 7, weight: 50.75 }]),
+        recordedExercise("custom-timed", "Timed lift", [{ reps: 0, durationSeconds: 30, weight: 999 }])
+      ]),
+      recordedSession("active", null, [recordedExercise("bench-press", "Barbell Bench Press", [{ reps: 1, weight: 300 }])])
+    ]);
+    const snapshot = historySnapshot();
+    assert.deepEqual(await workouts.getSocialPersonalRecordHistory(), [
+      { id: "complete", startedAt: completedAt, completedAt, liftKey: "bench-press", exerciseName: "Barbell Bench Press", weight: 175.25, reps: 2 },
+      { id: "complete", startedAt: completedAt, completedAt, liftKey: "custom:my row", exerciseName: "My row", weight: 50.75, reps: 7 }
+    ]);
+    assert.equal(historySnapshot(), snapshot, "social scans never change measurements, private notes, or completion state");
   });
 }
 
