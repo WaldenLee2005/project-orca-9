@@ -60,7 +60,7 @@ Local SQL files and policy tests do not prove hosted deployment. The hosted proj
 
 ## Verification and release checks
 
-October 6 implementation checks: TypeScript and all 380 app tests passed; iOS, Android and web exports built successfully. Phone-sized browser checks with synthetic accounts/transport covered posts, photos, follow controls, token-refresh draft retention and offline automatic PR retry; light/dark layouts were reviewed at 390/320 px. These checks preserve isolated workout history and do not establish hosted or physical-device readiness.
+October 6 implementation checks: TypeScript and all 381 app tests passed; iOS, Android and web exports built successfully. Phone-sized browser checks with synthetic accounts/transport covered posts, photos, follow controls, token-refresh draft retention and offline automatic PR retry; light/dark layouts, including the signed-out feed, were reviewed at 390/320 px. These checks preserve isolated workout history and do not establish hosted or physical-device readiness.
 
 - From the repository root, run `npm --prefix apps/mobile run typecheck` and `npm --prefix apps/mobile test` with Node 24+. Auth tests use the actual SDK with simulated HTTP responses; feed/publisher tests exercise their injected transport/storage boundaries.
 - `supabase/tests/feed-following.test.mjs` passed against local PostgreSQL through PGlite, with minimal Supabase auth/storage schemas. It checks migration reruns/data preservation, actual authenticated/anonymous roles and claims, approval ownership, audiences, photo policies, retry tombstones, and account deletion. Install `@electric-sql/pglite` into a temporary directory without adding it to app dependencies, then run from the repository root with Node 24+:

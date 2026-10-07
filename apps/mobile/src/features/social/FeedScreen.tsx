@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { Link, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Image, Platform, Pressable, Switch, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Image, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 import { ScreenHeading } from "../../components/ScreenHeading";
 import { getOptionalSupabaseClient, isSupabaseConfigured } from "../../lib/supabase";
 import { createThemedStyles } from "../../theme/designSystem";
@@ -49,7 +49,7 @@ export default function FeedScreen() {
   }, []));
   if (loading) return <View style={styles.center}><ActivityIndicator accessibilityLabel="Connecting your feed" /></View>;
   if (userId) return <AccountFeed key={userId} userId={userId} />;
-  return <View style={styles.guest}>
+  return <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
     <ScreenHeading eyebrow="Orca · Community" title="Feed" subtitle="Share your progress. Keep up with the people you train with." />
     <View style={styles.card}>
       <Ionicons name="people-outline" size={32} style={styles.blueIcon} />
@@ -62,7 +62,7 @@ export default function FeedScreen() {
       </> : <Text style={styles.hint}>The feed is unavailable in this build. Your local training is ready to use.</Text>}
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
     </View>
-  </View>;
+  </ScrollView>;
 }
 
 function AccountFeed({ userId }: { userId: string }) {
@@ -256,7 +256,7 @@ function Audience({ value, onChange, disabled }: { value: ProfileVisibility; onC
 const themedStyles = createThemedStyles((colors, ui) => ({
   screen: { flex: 1, backgroundColor: colors.background }, content: { ...ui.content, paddingHorizontal: 16 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.background },
-  guest: { ...ui.content, flex: 1, paddingTop: 24 }, card: { ...ui.group, padding: 16, gap: 12, marginBottom: 14 },
+  card: { ...ui.group, padding: 16, gap: 12, marginBottom: 14 },
   cardTitle: { fontSize: 17, lineHeight: 23, fontWeight: "600", color: colors.text },
   body: { fontSize: 16, lineHeight: 24, color: colors.secondaryText }, hint: { fontSize: 13, lineHeight: 19, color: colors.mutedText },
   name: { fontSize: 15, lineHeight: 21, fontWeight: "600", color: colors.text },
