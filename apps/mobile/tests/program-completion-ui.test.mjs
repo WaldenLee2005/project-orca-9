@@ -205,3 +205,32 @@ test("starter previews never inherit the saved program's completed badges", asyn
   assert.ok(screen.button("Activate Starter preview"));
   screen.unmount();
 });
+
+test("Programs uses the restarted day order instead of the weekly template's weekday and keeps completion protection", async () => {
+  const weekly = { ...program("program", 7), schedule: { mode: "weekly", startDate: "2026-10-05" } };
+  const before = structuredClone(weekly);
+  let completed = [];
+  const screen = mountPrograms({ programs: [weekly], loadCompleted: async () => completed });
+  await screen.flush();
+  screen.setDate("2026-10-06");
+  screen.state.loadLibrary = async () => ({ programs: [weekly], activeProgramId: "program",
+    activeSchedule: { mode: "cycle", startDate: "2026-10-06" }, restartedAt: "2026-10-06" });
+  await screen.trainingChanged();
+  assert.match(screen.text(), /Today · Day 1 · Lift 1/);
+  assert.match(screen.text(), /Restarted at Day 1 today/);
+  assert.doesNotMatch(screen.text(), /Today · Tuesday/);
+  await screen.press("View program");
+  assert.ok(screen.button("Start Day 1 · Lift 1"), "the overview shares the execution day labels");
+  assert.match(screen.text(), /Following the program's day order/);
+  completed = [{ programId: "program", dayId: "day-1" }];
+  await screen.trainingChanged();
+  assert.equal(screen.button("Start Day 1 · Lift 1"), undefined);
+  assert.match(screen.text(), /Completed today/);
+  await screen.press("Programs");
+  assert.equal(screen.button("Open today's session"), undefined);
+  screen.setDate("2026-10-07"); await screen.tickDate();
+  assert.match(screen.text(), /Today · Day 2 · Lift 2/);
+  assert.doesNotMatch(screen.text(), /Restarted at Day 1 today/);
+  assert.deepEqual(weekly, before, "the saved template remains untouched by the screen");
+  screen.unmount();
+});

@@ -4,9 +4,10 @@ import { type SessionExercise, sessionExercises } from "../features/workouts/rep
 import { compactLocalDatabase, createLocalId, getDatabase } from "./database";
 import { getCachedCurrentUserProfile, warmCurrentUserProfileCache } from "./profilesRepository";
 import { dateOrdinal, getScheduledDayIndex, isPlanLoadCoachingEnabled, localDateKey, parseWorkoutProgramPlan, toWorkoutProgramPlan, validateExerciseTarget, validateProgramLoad, type ProgramExercise, type WorkoutProgramPlan } from "../features/programs/programModel";
-import { getProgramLibrary } from "./programsRepository";
+import { getProgramLibraryForWorkout } from "./programsRepository";
 import { ensureWebTrainingStorage } from "./trainingStorage";
 import { emitTrainingChange } from "./trainingChanges";
+import { serializeTrainingMutation as serializeWorkoutMutation } from "./trainingMutationQueue";
 
 export type WorkoutSet = { reps: number; weight: number; durationSeconds?: number | null; effort?: "easy" | "moderate" | "hard" | null; warmup?: boolean; note?: string | null };
 export const MAX_SET_NOTE_LENGTH = 1000;
@@ -554,15 +555,6 @@ export async function getProgressVolumeSeries(input: { liftKey?: string | null; 
   }));
 }
 
-let workoutMutation: Promise<void> = Promise.resolve();
-
-function serializeWorkoutMutation<T>(action: () => Promise<T>): Promise<T> {
-  const operation = workoutMutation.then(action);
-  // Failed writes must not block a later retry. The caller still receives the original rejection.
-  workoutMutation = operation.then(() => undefined, () => undefined);
-  return operation;
-}
-
 type CreateSessionInput = { programPlan: WorkoutProgramPlan } | { followActiveProgram: true };
 
 export async function createWorkoutSession(input?: CreateSessionInput): Promise<ActiveWorkoutSession> {
@@ -606,13 +598,13 @@ async function createStoredWorkoutSession(input?: CreateSessionInput): Promise<A
       const date = localDateKey();
       let alreadyCompleted = false;
       if ("followActiveProgram" in input) {
-        const library = await getProgramLibrary();
+        const library = await getProgramLibraryForWorkout();
         const program = library.programs.find((item) => item.id === library.activeProgramId);
-        const day = program?.days[getScheduledDayIndex(program.schedule, program.days.length, date)];
+        const day = program?.days[getScheduledDayIndex(library.activeSchedule ?? program.schedule, program.days.length, date)];
         programPlan = null;
         if (program && day?.kind === "training") {
           const completed = await getCompletedProgramDays(date);
-          if (!completed.some((item) => item.programId === program.id && item.dayId === day.id)) programPlan = toWorkoutProgramPlan(program, day.id);
+          if (!completed.some((item) => item.programId === program.id && item.dayId === day.id)) programPlan = toWorkoutProgramPlan({ ...program, schedule: library.activeSchedule ?? program.schedule }, day.id);
         }
         // Rest, future starts and completed training days allow an unplanned extra workout.
       } else if (explicitProgramPlan) {

@@ -42,8 +42,8 @@ import { useAppTheme, useThemeStyles } from "../../src/theme/ThemeProvider";
 import { ExerciseBrowser } from "../../src/features/exercises/ExerciseBrowser";
 import { ScreenHeading } from "../../src/components/ScreenHeading";
 import { StreakCard } from "../../src/components/StreakCard";
-import { formatProgramPrescription, formatDuration, getPendingProgramExercises, getProgramDayName, getScheduledDayIndex, localDateKey, toWorkoutProgramPlan, type ProgramExercise, type WorkoutProgramPlan, type TrainingProgram } from "../../src/features/programs/programModel";
-import { getProgramLibrary, getTrainingProgram } from "../../src/storage/programsRepository";
+import { formatProgramPrescription, formatDuration, getPendingProgramExercises, getProgramDayName, getScheduledDayIndex, localDateKey, toWorkoutProgramPlan, type ProgramExercise, type WorkoutProgramPlan, type TrainingProgram, type ProgramSchedule } from "../../src/features/programs/programModel";
+import { getProgramLibrary } from "../../src/storage/programsRepository";
 import { subscribeToTrainingChanges } from "../../src/storage/trainingChanges";
 
 import { CoachedSetLogger } from "../../src/features/coach/CoachedSetLogger";
@@ -86,6 +86,8 @@ export default function WorkoutsScreen() {
   const [isSavingSession, setIsSavingSession] = useState(false);
   const [streak, setStreak] = useState<StreakSummary | null>(null);
   const [scheduledProgram, setScheduledProgram] = useState<TrainingProgram | null>(null);
+  const [executionSchedule, setExecutionSchedule] = useState<ProgramSchedule | null>(null);
+  const [programRestartedAt, setProgramRestartedAt] = useState<string | null>(null);
   const [completedProgramDays, setCompletedProgramDays] = useState<CompletedProgramDay[]>([]);
   const [scheduleDate, setScheduleDate] = useState(localDateKey());
   const [scheduleError, setScheduleError] = useState<string | null>(null);
@@ -111,6 +113,8 @@ export default function WorkoutsScreen() {
       setScheduleDate(date);
       setScheduleError(null);
       setScheduledProgram(library.programs.find((program) => program.id === library.activeProgramId) ?? null);
+      setExecutionSchedule(library.activeSchedule ?? null);
+      setProgramRestartedAt(library.restartedAt ?? null);
       setCompletedProgramDays(completedDays);
     } catch {
       if (isTrainingScreenFocused.current && request === trainingRefreshRequest.current) {
@@ -210,9 +214,11 @@ export default function WorkoutsScreen() {
     router.setParams({ programId: undefined, programDayId: undefined });
     async function openProgram() {
       try {
-        const program = await getTrainingProgram(programId!);
+        const library = await getProgramLibrary();
+        const program = library.programs.find((item) => item.id === programId);
         if (!program) throw new Error("That program no longer exists. Create or select another program.");
-        const session = await createWorkoutSession({ programPlan: toWorkoutProgramPlan(program, programDayId) });
+        const schedule = library.activeProgramId === program.id ? library.activeSchedule ?? program.schedule : program.schedule;
+        const session = await createWorkoutSession({ programPlan: toWorkoutProgramPlan({ ...program, schedule }, programDayId) });
         setSessionId(session.id);
         setSessionStartedAt(session.startedAt);
         setLoggedExercises(session.exercises);
@@ -231,7 +237,9 @@ export default function WorkoutsScreen() {
   }, [programId, programDayId, isSessionReady]);
 
   const pendingProgramExercises = getPendingProgramExercises(programPlan, loggedExercises);
-  const scheduledDay = scheduledProgram?.days[getScheduledDayIndex(scheduledProgram.schedule, scheduledProgram.days.length, scheduleDate)];
+  const scheduledDay = scheduledProgram?.days[getScheduledDayIndex(executionSchedule ?? scheduledProgram.schedule, scheduledProgram.days.length, scheduleDate)];
+  const scheduledDayName = scheduledProgram && scheduledDay
+    ? getProgramDayName({ ...scheduledProgram, schedule: executionSchedule ?? scheduledProgram.schedule }, scheduledDay) : null;
   const scheduledDayCompleted = scheduledDay?.kind === "training" && completedProgramDays.some((day) =>
     day.programId === scheduledProgram?.id && day.dayId === scheduledDay.id);
 
@@ -546,10 +554,11 @@ export default function WorkoutsScreen() {
         <View style={styles.startHero}>
           <View style={styles.startHeader}>
             <View style={styles.heroTopRow}><Text style={[styles.eyebrow, { color: theme.colors.mutedText }]}>{sessionStartedAt ? "UNFINISHED SESSION" : scheduledDayCompleted ? "COMPLETED TODAY" : scheduledProgram ? "YOUR PROGRAM" : "YOUR SESSION"}</Text><Ionicons name={scheduledDayCompleted && !sessionStartedAt ? "checkmark-circle-outline" : "calendar-outline"} size={20} color={theme.colors.mutedText} /></View>
-            <Text style={[styles.startTitle, { color: theme.colors.text }]}>{sessionStartedAt ? programPlan?.programName ?? "Your workout" : scheduledDay && scheduledProgram ? getProgramDayName(scheduledProgram, scheduledDay) : "Ready to train?"}</Text>
+            <Text style={[styles.startTitle, { color: theme.colors.text }]}>{sessionStartedAt ? programPlan?.programName ?? "Your workout" : scheduledDayName ?? "Ready to train?"}</Text>
             <Text style={[styles.startCopy, { color: theme.colors.secondaryText }]}>
               {sessionStartedAt ? `${programPlan?.dayName ? `${programPlan.dayName} · ` : ""}${loggedExercises.length} ${loggedExercises.length === 1 ? "exercise" : "exercises"} saved. Your unfinished workout is ready to resume.` : scheduledDayCompleted ? `${scheduledProgram!.name} · Today's workout is saved. You can log an extra workout without repeating the program day.` : scheduledDay?.kind === "training" ? `${scheduledProgram!.name} · ${scheduledDay.exercises.length} exercises · ${scheduledDay.exercises.reduce((sum, entry) => sum + entry.sets, 0)} sets` : scheduledDay?.kind === "rest" ? `${scheduledProgram!.name} · Scheduled recovery. Your streak is protected. You can still start an extra workout.` : scheduledProgram ? `Your program starts ${scheduledProgram.schedule.startDate}. Until then, you can log an unplanned workout.` : "Choose your exercises and record each completed set. No account required."}
             </Text>
+            {!sessionStartedAt && programRestartedAt === scheduleDate ? <Text style={[styles.noticeText, { color: theme.colors.secondaryText }]}>Missed a program day. Restarted at Day 1 today.</Text> : null}
             {sessionNotice ? <Text style={[styles.noticeText, { color: theme.colors.secondaryText }]}>{sessionNotice}</Text> : null}
             {storageError ? <Text style={[styles.errorText, { color: theme.colors.accent }]}>{storageError}</Text> : null}
           </View>

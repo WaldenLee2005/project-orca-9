@@ -6,7 +6,7 @@ import { AppState, Platform, Pressable, ScrollView, Text, TextInput, View } from
 import { ScreenHeading } from "../../components/ScreenHeading";
 import { ExerciseBrowser } from "../exercises/ExerciseBrowser";
 import { ProgramExerciseList, type ProgramScrollMetrics } from "./ProgramExerciseList";
-import { getDaySlotLabel, getProgramDayName, getScheduledDayIndex, isProgramLoadCoachingEnabled, localDateKey, PROGRAM_LIMITS, type ProgramDay, type ProgramDraft, type TrainingProgram, type ProgramExercise } from "./programModel";
+import { getDaySlotLabel, getProgramDayName, getScheduledDayIndex, isProgramLoadCoachingEnabled, localDateKey, PROGRAM_LIMITS, type ProgramDay, type ProgramDraft, type TrainingProgram, type ProgramExercise, type ProgramSchedule } from "./programModel";
 import { emptyProgramDay, ProgramScheduleEditor } from "./ProgramScheduleEditor";
 import { sessionExercises, type CatalogExercise } from "../workouts/repdbSessionExercises";
 import { createLocalId } from "../../storage/database";
@@ -33,6 +33,8 @@ export default function ProgramsScreen() {
   const [previewProgramId, setPreviewProgramId] = useState<string | null>(null);
   const [previewStarter, setPreviewStarter] = useState<StarterProgram | null>(null);
   const [activeProgramId, setActiveProgramId] = useState<string | null>(null);
+  const [activeSchedule, setActiveSchedule] = useState<ProgramSchedule | null>(null);
+  const [restartedAt, setRestartedAt] = useState<string | null>(null);
   const [completedDays, setCompletedDays] = useState<Array<{ programId: string; dayId: string }>>([]);
   const [scheduleDate, setScheduleDate] = useState(localDateKey());
   const [followConfirm, setFollowConfirm] = useState<string | null>(null);
@@ -67,6 +69,7 @@ export default function ProgramsScreen() {
         if (!active || version !== loadVersion.current) return;
         if (date !== localDateKey()) { lastDate = localDateKey(); void refresh(); return; }
         setPrograms(result.programs); setActiveProgramId(result.activeProgramId); setCompletedDays(completed); setScheduleDate(date); setLibraryError(null);
+        setActiveSchedule(result.activeSchedule ?? null); setRestartedAt(result.restartedAt ?? null);
       } catch (cause) {
         if (active && version === loadVersion.current) setLibraryError(cause instanceof Error ? cause.message : "Could not load your programs. Please try again.");
       } finally { if (active && version === loadVersion.current) setIsLoading(false); }
@@ -80,7 +83,7 @@ export default function ProgramsScreen() {
   }, [reloadKey]));
 
   const activeProgram = programs.find((program) => program.id === activeProgramId);
-  const activeDayIndex = activeProgram ? getScheduledDayIndex(activeProgram.schedule, activeProgram.days.length, scheduleDate) : -1;
+  const activeDayIndex = activeProgram ? getScheduledDayIndex(activeSchedule ?? activeProgram.schedule, activeProgram.days.length, scheduleDate) : -1;
   const activeDay = activeProgram?.days[activeDayIndex];
   const activeDayCompleted = Boolean(activeProgram && activeDay && completedDays.some((day) => day.programId === activeProgram.id && day.dayId === activeDay.id));
   const displayedPrograms = [...programs].sort((a, b) => Number(b.id === activeProgramId) - Number(a.id === activeProgramId));
@@ -285,7 +288,8 @@ export default function ProgramsScreen() {
     const isActive = savedPreview?.id === activeProgramId;
     const overviewId = savedPreview?.id ?? previewStarter!.id;
     const disabled = isLoading || isSaving || Boolean(starting) || Boolean(libraryError);
-    const todayIndex = getScheduledDayIndex(overview.schedule, overview.days.length, scheduleDate);
+    const overviewSchedule = isActive ? activeSchedule ?? overview.schedule : overview.schedule;
+    const todayIndex = getScheduledDayIndex(overviewSchedule, overview.days.length, scheduleDate);
     return <ScrollView key={`overview-${overviewId}`} style={styles.screen} contentContainerStyle={ui.content}>
       <Pressable accessibilityRole="button" disabled={isSaving || Boolean(starting)} onPress={closeOverview} style={styles.back}>
         <Ionicons name="chevron-back" size={20} color={colors.text} /><Text style={styles.backText}>Programs</Text>
@@ -312,7 +316,8 @@ export default function ProgramsScreen() {
         {libraryError ? <Action label="Retry loading" icon="refresh" onPress={() => setReloadKey((value) => value + 1)} /> : null}</View> : null}
       {blockedProgram === overviewId ? <View style={styles.feedbackPanel}><Text style={styles.body}>Finish your unfinished workout before starting another day. If no exercises are saved, you can exit it instead.</Text>
         <Action label="Go to active session" icon="arrow-forward" onPress={() => router.push("/workouts")} /></View> : null}
-      <ProgramDaysOverview program={overview} todayIndex={todayIndex} disabled={disabled}
+      {isActive && restartedAt ? <Text style={styles.caption}>Restarted after a missed day. Following the program's day order.</Text> : null}
+      <ProgramDaysOverview program={{ ...overview, schedule: overviewSchedule }} todayIndex={todayIndex} disabled={disabled}
         completedDayIds={savedPreview ? completedDays.filter((day) => day.programId === savedPreview.id).map((day) => day.dayId) : undefined}
         onStartDay={savedPreview ? (day) => { void startProgram(savedPreview, day); } : undefined} />
       {savedPreview ? <View style={styles.managementActions}>
@@ -338,8 +343,9 @@ export default function ProgramsScreen() {
           <Text style={styles.activeLabel}>{activeProgram ? "Active program" : "No active program"}</Text></View>
         <Text style={styles.programName}>{activeProgram?.name ?? "Track your way"}</Text>
         {activeProgram ? <>
-          <Text style={styles.dayTitle}>{activeDay ? `Today · ${getDaySlotLabel(activeProgram.schedule.mode, activeDayIndex)}${activeDay.name ? ` · ${activeDay.name}` : ""}` : `Starts ${activeProgram.schedule.startDate}`}</Text>
+          <Text style={styles.dayTitle}>{activeDay ? `Today · ${getDaySlotLabel((activeSchedule ?? activeProgram.schedule).mode, activeDayIndex)}${activeDay.name ? ` · ${activeDay.name}` : ""}` : `Starts ${activeProgram.schedule.startDate}`}</Text>
           <Text style={styles.body}>{activeDayCompleted ? "Completed today" : activeDay?.kind === "training" ? `${activeDay.exercises.length} exercises · ${activeDay.exercises.reduce((sum, entry) => sum + entry.sets, 0)} sets` : activeDay?.kind === "rest" ? "Rest day · Your streak is protected" : "Manual tracking until the start date"}</Text>
+          {restartedAt === scheduleDate ? <Text style={styles.caption}>Missed a program day. Restarted at Day 1 today.</Text> : null}
           {!activeDayCompleted ? <Action label="Open today's session" icon="arrow-forward" primary onPress={() => router.push("/workouts")} disabled={isSaving || Boolean(starting)} /> : null}
           <Action label="View program" icon="list-outline" onPress={() => { setPreviewProgramId(activeProgram.id); setPreviewStarter(null); setError(null); setNotice(null); }} disabled={isSaving || Boolean(starting)} />
         </> : <Text style={styles.body}>Choose a program to fill your workouts automatically, or track your own sessions.</Text>}

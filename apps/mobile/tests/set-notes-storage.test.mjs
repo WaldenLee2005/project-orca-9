@@ -29,10 +29,13 @@ const modules = {
   "@react-native-async-storage/async-storage": "export default globalThis.__orcaSetNotesTest.storage;",
   "./database": "export const getDatabase = async () => globalThis.__orcaSetNotesTest.database; export const compactLocalDatabase = async () => {}; export const createLocalId = (prefix) => prefix + '-' + (++globalThis.__orcaSetNotesTest.nextId);",
   "./profilesRepository": "export const getCachedCurrentUserProfile = () => null; export const warmCurrentUserProfileCache = () => {};",
-  "./programsRepository": "export const getProgramLibrary = async () => ({ programs: [], activeProgramId: null });",
+  "./programsRepository": "export const getProgramLibraryForWorkout = async () => ({ programs: [], activeProgramId: null });",
   "../features/workouts/repdbSessionExercises": "export const sessionExercises = [{ id: 'bench', name: 'Bench Press', image: 1 }];"
 };
 registerHooks({ resolve(specifier, context, nextResolve) {
+  if (specifier === "./trainingMutationQueue") return nextResolve(new URL("../src/storage/trainingMutationQueue.ts", import.meta.url).href, context);
+  if (specifier === "../features/programs/programRestart") return nextResolve(new URL("../src/features/programs/programRestart.ts", import.meta.url).href, context);
+  if (specifier === "./programModel" && context.parentURL?.endsWith("/programRestart.ts")) return nextResolve(new URL("../src/features/programs/programModel.ts", import.meta.url).href, context);
   const parentPath = context.parentURL ? new URL(context.parentURL).pathname : "";
   if (specifier === "./trainingStorage") return nextResolve(new URL("../src/storage/trainingStorage.ts", import.meta.url).href, context);
   if (specifier === "./trainingChanges") return nextResolve(new URL("../src/storage/trainingChanges.ts", import.meta.url).href, context);

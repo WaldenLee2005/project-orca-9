@@ -27,6 +27,9 @@ const modules = {
   "../features/workouts/repdbSessionExercises": "export const sessionExercises = [{ id: 'bench', name: 'Bench Press', image: 1 }, { id: 'row', name: 'Row', image: 2 }];"
 };
 registerHooks({ resolve(specifier, context, nextResolve) {
+  if (specifier === "./trainingMutationQueue") return nextResolve(new URL("../src/storage/trainingMutationQueue.ts", import.meta.url).href, context);
+  if (specifier === "../features/programs/programRestart") return nextResolve(new URL("../src/features/programs/programRestart.ts", import.meta.url).href, context);
+  if (specifier === "./programModel" && context.parentURL?.endsWith("/programRestart.ts")) return nextResolve(new URL("../src/features/programs/programModel.ts", import.meta.url).href, context);
   if (context.parentURL?.endsWith("/programs/starterPrograms.ts") && specifier === "./programModel") return nextResolve(new URL("./programModel.ts", context.parentURL).href, context);
   if (context.parentURL?.endsWith("/programs/importProgram.ts") && ["./programModel", "../exercises/exerciseSearch"].includes(specifier)) return nextResolve(new URL(`${specifier}.ts`, context.parentURL).href, context);
   if (specifier === "./trainingStorage") return nextResolve(new URL("../src/storage/trainingStorage.ts", import.meta.url).href, context);

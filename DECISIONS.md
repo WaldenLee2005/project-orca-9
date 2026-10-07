@@ -1,5 +1,13 @@
 # Decision Log
 
+## 2026-10-06: Restart An Active Program After A Missed Training Day
+
+Decision: If a settled scheduled Training date since the active program's latest revision/start has no nonempty completed workout with that exact program/day snapshot on the local completion date, restart execution at the program's first stored day today. Today remains open, scheduled rest is not a miss, and manual rest or another workout does not satisfy the program day. This rule concerns program adherence rather than the ordinary workout/rest streak.
+
+Write one new dated cycle execution revision, preserving the saved weekly/cycle template, earlier scheduled rest and all actual workouts. The first stored day may be Rest and remains Rest. An unfinished session defers restart and keeps its original snapshot; once it ends, reconcile from actual saved results. Shared serialized training mutations and schedule reads keep Session, Programs, streaks and reminders aligned, without a migration or data reset. Inactive programs and future starts are unaffected.
+
+Reason: The user wants a missed program day to bring the program back to its beginning instead of continuing later in the sequence.
+
 ## 2026-10-06: Chart The Heaviest Actual Weight Lifted
 
 Decision: PRs show the heaviest actual weight lifted in any rep set from a completed workout. Any rep count and warm-up sets are eligible; timed work remains outside the rep-based charts. No one-rep estimate or multiplier is applied. All Lifts shows the highest actual weight across exercises with its source weight/reps visible; selecting an exercise limits records to that lift.
@@ -10,9 +18,9 @@ Reason: The user wants the PR chart to show the most weight actually lifted, reg
 
 ## 2026-10-05: Retire A Completed Program Day Until Tomorrow
 
-Decision: A nonempty workout completed on the current local date satisfies the program/day IDs in its saved plan snapshot. Show **Completed today**, remove that day's planned exercise preview and repeat launch actions, and offer **Start an extra workout** as manual tracking. Recheck stored completion when creating a session; unfinished workouts still resume intact. The active program and calendar-based schedule remain unchanged.
+Decision: A nonempty workout completed on the current local date satisfies the program/day IDs in its saved plan snapshot. Show **Completed today**, remove that day's planned exercise preview and repeat launch actions, and offer **Start an extra workout** as manual tracking. Recheck stored completion when creating a session; unfinished workouts still resume intact. Completion itself leaves the active program selection and saved schedule template unchanged.
 
-Paused, empty, cancelled, manual and other program/day workouts do not satisfy the day. Saving a partial planned workout still completes its day under the existing Save Session rule. A new local date makes the scheduled day eligible normally; no automatic cycle advance, migration or history reset is needed.
+Paused, empty, cancelled, manual and other program/day workouts do not satisfy the day. Saving a partial planned workout still completes its day under the existing Save Session rule. Completion itself does not advance the cycle; the active execution schedule determines the next local date, including the later missed-program-day restart rule. No migration or history reset is needed.
 
 Reason: After saving today's program workout, Session should stop presenting the same plan as unfinished work while still allowing an additional workout.
 
