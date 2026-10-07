@@ -6,6 +6,8 @@ Decision: Add a Following/Your posts feed, text updates up to 2,000 characters a
 
 Automatic PR sharing is off by default and starts with future workouts wholly inside the same signed-in account's enabled window. Derive strict heaviest-actual-weight improvements per lift from full completed history, including warm-ups and excluding timed sets. Publish only the lift name, actual weight/reps and previous record, never notes or raw logs. Account-scoped durable retries, stable event IDs and server deletion tombstones prevent duplicates and deleted-post resurrection. Turning sharing off cancels pending work; local workout saves never await cloud publication.
 
+Feed audience controls use Public/Followers switches for both created posts and automatic PRs. PR audience can be selected while sharing is off without enabling publication; saved preferences load before controls become active. Preserve Only me and the profile privacy gate, and explain public reach with a link to settings. Audience changes update future/unsent PRs, retaining audiences on already-sent or published posts.
+
 Reason: The user requested PR auto-posting, simple text/image posts and following. This replaces the planned friendship feed interaction with following while preserving existing profiles, friendships, feed rows and local training. The additive `supabase/feed-following.sql` migration and hosted/native acceptance are separate from compiling the app; see the social README.
 
 ## 2026-10-06: Restart An Active Program After A Missed Training Day

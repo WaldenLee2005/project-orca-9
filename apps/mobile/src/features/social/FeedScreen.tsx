@@ -82,33 +82,39 @@ function AccountFeed({ userId }: { userId: string }) {
   const [eventId, setEventId] = useState(newEventId);
   const [visibility, setVisibility] = useState<ProfileVisibility>("friends");
   const [sharing, setSharing] = useState({ enabled: false, visibility: "friends" as ProfileVisibility, pendingCount: 0, lastError: null as string | null });
+  const [sharingReady, setSharingReady] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SocialPerson[]>([]);
   const [connections, setConnections] = useState<{ following: SocialPerson[]; followers: SocialPerson[]; requests: SocialPerson[] }>({ following: [], followers: [], requests: [] });
   const alive = useRef(true);
   const generation = useRef(0);
+  const sharingReadVersion = useRef(0);
   const actionRunning = useRef(false);
   useEffect(() => { alive.current = true; return () => { alive.current = false; generation.current++; }; }, []);
+  const readSharing = useCallback(async () => {
+    const request = ++sharingReadVersion.current;
+    const value = await getPRSharingPreferences(userId);
+    if (alive.current && request === sharingReadVersion.current) { setSharing(value); setSharingReady(true); }
+  }, [userId]);
   useEffect(() => subscribeToPRSharingChanges(() => {
-    void getPRSharingPreferences(userId).then((value) => { if (alive.current) setSharing(value); }).catch(() => {});
-  }), [userId]);
+    void readSharing().catch(() => {});
+  }), [readSharing]);
 
   const refresh = useCallback(async () => {
     const request = ++generation.current;
     setRefreshing(true);
-    const responses = await Promise.allSettled([loadFeed({ mode }), getMySocialProfile(), getPRSharingPreferences(userId), loadConnections()]);
+    const responses = await Promise.allSettled([loadFeed({ mode }), getMySocialProfile(), readSharing(), loadConnections()]);
     if (!alive.current || request !== generation.current) return;
-    const [feed, account, prefs, people] = responses;
+    const [feed, account, , people] = responses;
     if (feed.status === "fulfilled") { setPosts(feed.value.posts); setCursor(feed.value.nextCursor ?? null); }
     else { setPosts([]); setCursor(null); }
     const failed = responses.find((response) => response.status === "rejected");
     setError(failed?.status === "rejected" ? message(failed.reason) : null);
     if (account.status === "fulfilled") setProfile(account.value);
-    if (prefs.status === "fulfilled") setSharing(prefs.value);
     if (people.status === "fulfilled") setConnections(people.value);
     setRefreshing(false);
-  }, [mode, userId]);
+  }, [mode, readSharing]);
   useFocusEffect(useCallback(() => { void refresh(); return () => { generation.current++; }; }, [refresh]));
 
   async function act(key: string, work: () => Promise<void>) {
@@ -157,9 +163,9 @@ function AccountFeed({ userId }: { userId: string }) {
 
   async function changeSharing(enabled: boolean, audience = sharing.visibility) {
     await act("sharing", async () => {
+      sharingReadVersion.current++;
       await setPRSharingPreferences(userId, { enabled, visibility: audience });
-      const updated = await getPRSharingPreferences(userId);
-      if (alive.current) setSharing(updated);
+      await readSharing();
     });
   }
 
@@ -219,13 +225,15 @@ function AccountFeed({ userId }: { userId: string }) {
       {!profile && !refreshing ? <Link href={{ pathname: "/onboarding", params: { mode: "settings" } }} asChild><Pressable accessibilityRole="button" style={styles.button}><Text style={styles.buttonText}>Finish your social profile</Text></Pressable></Link> : null}
       <TextInput accessibilityLabel="Post text" multiline maxLength={2000} editable={!busy} placeholder="How did training go?" placeholderTextColor={colors.mutedText} value={text} onChangeText={(value) => { setEventId(newEventId()); setText(value); }} style={[styles.input, styles.composer]} />
       {photo ? <View><Image source={{ uri: photo.uri }} accessibilityLabel="Selected post photo" style={styles.postImage} /><Pressable disabled={!!busy} style={styles.smallButton} onPress={() => { setEventId(newEventId()); setPhoto(null); }}><Text style={styles.buttonText}>Remove photo</Text></Pressable></View> : null}
-      <Audience value={visibility} onChange={(value) => { if (value !== visibility) setEventId(newEventId()); setVisibility(value); }} disabled={!!busy} />
-      <Text style={styles.hint}>{visibility === "private" ? "Visible only to you." : visibility === "public" ? "Public when your profile is public; otherwise only approved followers." : "Visible to approved followers. Private profiles approve follow requests."}</Text>
+      <Audience label="Post publicly" value={visibility} onChange={(value) => { if (value !== visibility) setEventId(newEventId()); setVisibility(value); }} disabled={!!busy} />
+      <AudienceDetails value={visibility} profileVisibility={profile?.profileVisibility} />
       <View style={styles.composerActions}><Pressable accessibilityRole="button" disabled={!!busy} style={styles.button} onPress={() => void choosePhoto()}><Text style={styles.buttonText}>{photo ? "Change photo" : "Add photo"}</Text></Pressable><Text style={styles.counter}>{text.length}/2000</Text><Pressable accessibilityRole="button" disabled={!!busy || (!text.trim() && !photo)} style={[styles.primary, (!!busy || (!text.trim() && !photo)) && styles.disabled]} onPress={() => void post()}><Text style={styles.primaryText}>{busy === "post" ? "Posting…" : "Post"}</Text></Pressable></View>
     </View>
     <View style={styles.card}>
-      <View style={styles.sharingRow}><View style={styles.personDetails}><Text style={styles.cardTitle}>Automatically share PRs</Text><Text style={styles.hint}>Post new weight records after saving a workout. Starts with your next workout; past history stays private.</Text></View><Switch accessibilityLabel="Automatically share personal records" disabled={!!busy} value={sharing.enabled} onValueChange={(value) => void changeSharing(value)} trackColor={{ true: colors.accent }} /></View>
-      {sharing.enabled ? <Audience value={sharing.visibility} disabled={!!busy} onChange={(value) => void changeSharing(true, value)} /> : null}
+      <View style={styles.sharingRow}><View style={styles.personDetails}><Text style={styles.cardTitle}>Automatically share PRs</Text><Text style={styles.hint}>Post new weight records after saving a workout. Starts with your next workout; past history stays private.</Text></View><Switch accessibilityLabel="Automatically share personal records" disabled={!!busy || !sharingReady} value={sharing.enabled} onValueChange={(value) => void changeSharing(value)} trackColor={{ false: colors.border, true: colors.accent }} thumbColor="#FFFFFF" /></View>
+      <Audience label="Post PRs publicly" value={sharing.visibility} disabled={!!busy || !sharingReady} onChange={(value) => void changeSharing(sharing.enabled, value)} />
+      {sharingReady ? <AudienceDetails value={sharing.visibility} profileVisibility={profile?.profileVisibility} /> : <Text style={styles.hint}>Loading sharing settings…</Text>}
+      <Text style={styles.hint}>Applies to future PRs and posts waiting to send. Posts already sent keep their audience.</Text>
       {sharing.pendingCount || sharing.lastError ? <><Text style={styles.hint}>{sharing.pendingCount} PR {sharing.pendingCount === 1 ? "post" : "posts"} waiting to share.{sharing.lastError ? ` ${sharing.lastError}` : ""}</Text><Pressable disabled={!!busy} style={styles.button} onPress={() => void act("retry", async () => { await retryPersonalRecordPublishing(); await refresh(); })}><Text style={styles.buttonText}>Retry sharing</Text></Pressable></> : null}
     </View>
     {error ? <View style={styles.status}><Text accessibilityRole="alert" style={styles.error}>{error}</Text><Pressable style={styles.smallButton} disabled={!!busy} onPress={() => void refresh()}><Text style={styles.buttonText}>Refresh feed</Text></Pressable></View> : null}
@@ -248,9 +256,32 @@ function AccountFeed({ userId }: { userId: string }) {
   </View>} ListEmptyComponent={!refreshing && !error ? <View style={styles.empty}><Ionicons name="chatbubble-outline" size={30} color={colors.mutedText} /><Text style={styles.cardTitle}>{mode === "mine" ? "Your first update" : "Your feed starts here"}</Text><Text style={styles.hint}>{mode === "mine" ? "Post a thought or photo, or turn on PR sharing for your next workout." : "Find a lifter in People or share your own progress."}</Text></View> : null} ListFooterComponent={cursor ? <Pressable disabled={loadingMore || refreshing} style={styles.button} onPress={() => void loadMore()}><Text style={styles.buttonText}>{loadingMore ? "Loading…" : "Load more"}</Text></Pressable> : null} />;
 }
 
-function Audience({ value, onChange, disabled }: { value: ProfileVisibility; onChange: (value: ProfileVisibility) => void; disabled: boolean }) {
+function Audience({ label, value, onChange, disabled }: { label: string; value: ProfileVisibility; onChange: (value: ProfileVisibility) => void; disabled: boolean }) {
+  const { styles, colors } = useThemeStyles(themedStyles);
+  const onlyMe = value === "private";
+  return <View style={styles.audience}>
+    <View style={styles.sharingRow}>
+      <View style={styles.personDetails}>
+        <Text style={styles.name}>{label}</Text>
+        <Text accessibilityLiveRegion="polite" style={styles.hint}>{onlyMe ? "Only me" : value === "public" ? "Public" : "Followers only"}</Text>
+      </View>
+      <Switch accessibilityLabel={label} accessibilityHint="On selects Public. Off selects Followers only." value={value === "public"} disabled={disabled} onValueChange={(isPublic) => onChange(isPublic ? "public" : "friends")} trackColor={{ false: colors.border, true: colors.accent }} thumbColor="#FFFFFF" />
+    </View>
+    <Pressable accessibilityRole="button" accessibilityState={{ selected: onlyMe, disabled }} disabled={disabled} style={styles.privateAudience} onPress={() => onChange(onlyMe ? "friends" : "private")}>
+      <Ionicons name={onlyMe ? "lock-closed" : "lock-closed-outline"} size={14} color={colors.mutedText} />
+      <Text style={styles.mutedAction}>{onlyMe ? "Share with followers instead" : "Keep this only for me"}</Text>
+    </Pressable>
+  </View>;
+}
+
+function AudienceDetails({ value, profileVisibility }: { value: ProfileVisibility; profileVisibility?: ProfileVisibility }) {
   const { styles } = useThemeStyles(themedStyles);
-  return <View accessibilityLabel="Post audience" style={styles.audience}>{audienceOptions.map((option) => <Pressable key={option.value} accessibilityRole="button" accessibilityState={{ selected: value === option.value, disabled }} disabled={disabled} onPress={() => onChange(option.value)} style={[styles.audienceButton, value === option.value && styles.selected]}><Text style={value === option.value ? styles.selectedText : styles.buttonText}>{option.label}</Text></Pressable>)}</View>;
+  if (value === "private") return <Text style={styles.hint}>Visible only to you.</Text>;
+  if (value === "friends") return <Text style={styles.hint}>Visible to your approved followers. Others cannot see these posts.</Text>;
+  return <View style={styles.audience}>
+    <Text style={styles.hint}>{profileVisibility === "public" ? "Visible to everyone signed in to Orca." : "Your profile must also be public for everyone to see these posts. Until then, only approved followers can see them."}</Text>
+    {profileVisibility !== "public" ? <Link href={{ pathname: "/onboarding", params: { mode: "settings" } }} asChild><Pressable accessibilityRole="button" style={styles.privateAudience}><Text style={styles.buttonText}>Manage profile privacy</Text></Pressable></Link> : null}
+  </View>;
 }
 
 const themedStyles = createThemedStyles((colors, ui) => ({
@@ -268,7 +299,7 @@ const themedStyles = createThemedStyles((colors, ui) => ({
   input: { ...ui.input, padding: 12, color: colors.text, fontSize: 16, minHeight: 44 },
   composer: { minHeight: 100, textAlignVertical: "top", lineHeight: 23 },
   composerActions: { flexDirection: "row", gap: 8, alignItems: "center" }, counter: { flex: 1, color: colors.mutedText, fontSize: 11, textAlign: "right" },
-  audience: { flexDirection: "row", flexWrap: "wrap", gap: 6 }, audienceButton: { ...ui.input, minHeight: 44, paddingHorizontal: 12, justifyContent: "center" },
+  audience: { gap: 6 }, privateAudience: { minHeight: 44, flexDirection: "row", gap: 6, alignItems: "center", alignSelf: "flex-start" },
   selected: { backgroundColor: colors.accentSoft }, selectedText: { color: colors.accent, fontSize: 14, fontWeight: "700" },
   disabled: { opacity: 0.5 }, toolbar: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 16 },
   segmented: { ...ui.group, flexDirection: "row", flex: 1, padding: 4, gap: 4 }, segment: { flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 12 },

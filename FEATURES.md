@@ -256,6 +256,7 @@ Current capabilities:
 - SQL schema file exists for Supabase social tables and RLS policies.
 - Supabase Storage setup exists for uploaded avatar images.
 - Feed images use a separate private 5 MB bucket; signed links expire after 60 seconds and new reads follow the post/profile/follower permissions.
+- Feed has Public/Followers switches for created text/photo posts and automatic PRs, with Followers defaults and a separate Only me option. PR audience can be saved while sharing is off and applies to future/unsent posts; published audiences stay unchanged. Public reach also requires a public profile, with a settings link in the feed.
 - Account switching clears displayed social data; turning automatic sharing off cancels pending posts. Event IDs and deletion tombstones prevent retry duplicates/resurrection. Guest logging and private notes remain local.
 - The additive `supabase/feed-following.sql` migration preserves existing data. See the social README for setup, policy checks and remaining hosted/device acceptance.
 

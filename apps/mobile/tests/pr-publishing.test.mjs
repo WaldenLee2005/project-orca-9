@@ -85,6 +85,29 @@ test("default-off and opt-in never backfill old, paused, or guest sessions", asy
   assert.equal(state.published[0].previousWeight, 210, "unshared local history still supplies the true prior PR");
 });
 
+test("audience can be chosen while sharing is off and survives restart without adopting workouts or another account's preference", async () => {
+  const { state, service, restart } = setup();
+  state.history = [point("before-opt-in", 100)];
+  state.now = Date.parse(day(4));
+  await service.setPreferences("account-a", { enabled: false, visibility: "public" });
+  assert.deepEqual(await restart().getPreferences("account-a"), { enabled: false, visibility: "public", pendingCount: 0, lastError: null });
+  assert.deepEqual(JSON.parse(state.values.get(accountKey())).windows, [], "changing an audience does not grant consent to share");
+  await service.retry();
+  assert.equal(state.historyReads, 0);
+  assert.deepEqual(state.published, []);
+
+  state.userId = "account-b";
+  await service.observeAuth("account-b");
+  assert.equal((await service.getPreferences("account-b")).visibility, "friends", "new accounts keep the conservative default");
+  await service.setPreferences("account-b", { enabled: false, visibility: "private" });
+  assert.equal((await restart().getPreferences("account-b")).visibility, "private", "an existing Only me preference remains private");
+  state.userId = "account-a";
+  await service.observeAuth("account-a");
+  assert.equal((await service.getPreferences("account-a")).visibility, "public");
+  assert.equal(JSON.parse(state.values.get(accountKey("account-b"))).visibility, "private");
+  assert.deepEqual(state.published, []);
+});
+
 test("offline candidates are durable, launch recovers a completion before queue persistence, and retries never duplicate", async () => {
   const { state, service, restart } = setup();
   await service.setPreferences("account-a", { enabled: true, visibility: "friends" });
@@ -105,6 +128,35 @@ test("offline candidates are durable, launch recovers a completion before queue 
   state.now = Date.parse(day(6));
   await restart().retry();
   assert.deepEqual(state.published.map((event) => event.id), ["new", "crash-gap"]);
+});
+
+test("changing a PR audience persists for offline retries without changing published posts or consent windows", async () => {
+  const { state, service, restart } = setup();
+  await service.setPreferences("account-a", { enabled: true, visibility: "public" });
+  state.history = [point("pending", 100)];
+  state.now = Date.parse(day(4));
+  state.failPublish = true;
+  await assert.rejects(service.retry(), /Offline/);
+  const queued = JSON.parse(state.values.get(accountKey()));
+  assert.equal(queued.pending[0].visibility, "public");
+  await service.setPreferences("account-a", { enabled: true, visibility: "friends" });
+  const changed = JSON.parse(state.values.get(accountKey()));
+  assert.deepEqual(changed.windows, queued.windows, "audience changes retain the original future-workout consent boundary");
+  assert.equal(changed.pending[0].eventId, queued.pending[0].eventId, "changing privacy does not create a second PR identity");
+  assert.equal(changed.pending[0].visibility, "friends");
+  assert.equal((await restart().getPreferences("account-a")).visibility, "friends");
+  state.failPublish = false;
+  const restored = restart();
+  await restored.retry();
+  assert.deepEqual(state.published.map((event) => [event.id, event.visibility]), [["pending", "friends"]]);
+
+  await restored.setPreferences("account-a", { enabled: true, visibility: "public" });
+  await restored.retry();
+  assert.deepEqual(state.published.map((event) => [event.id, event.visibility]), [["pending", "friends"]], "already-published posts retain their original audience");
+  state.history.push(point("future", 110, day(4), day(5)));
+  state.now = Date.parse(day(6));
+  await restored.retry();
+  assert.deepEqual(state.published.map((event) => [event.id, event.visibility]), [["pending", "friends"], ["future", "public"]]);
 });
 
 test("candidate storage failures never publish; retry queue and stored workouts remain usable", async () => {
